@@ -1,0 +1,662 @@
+#+title: My Emacs Configuration
+#+property: header-args :tangle yes :tangle-mode: #o444 :results silent
+#+startup: indent
+
+#+begin_src emacs-lisp
+  ;;; init.el -*- lexical-binding: t; -*-
+
+  (eval-when-compile (require 'cl-lib))
+  (let ((emacs-start-time (current-time)))
+    (add-hook 'emacs-startup-hook
+              (lambda ()
+                (let ((elapsed (float-time (time-subtract (current-time) emacs-start-time))))
+                  (message "[Emacs initialized in %.3fs]" elapsed)))))
+#+end_src
+
+* Bootstrapping
+** Startup
+:PROPERTIES:
+:header-args: :tangle early-init.el :tangle-mode o444 :results silent
+:END:
+
+#+begin_src emacs-lisp
+  ;;; early-init.el -*- lexical-binding: t; -*-
+#+end_src
+
+*** Garbage collection
+
+Temporarily increase the garbage collection threshold to improve
+startup time. It's *very important* to reset =gc-cons-threshold= to
+ensure normal operation.
+
+#+begin_src emacs-lisp
+  (setq gc-cons-threshold most-positive-fixnum
+        gc-cons-percentage 0.5)
+
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              (setq gc-cons-threshold (* 128 1024 1024) ;; 128 MB
+                    gc-cons-percentage 0.1)))
+#+end_src
+
+*** UI
+
+#+begin_src emacs-lisp
+  (push '(alpha-background . 95) default-frame-alist)
+  (push '(font . "PragmataPro Mono-16") default-frame-alist)
+  (push '(menu-bar-lines . 0) default-frame-alist)
+  (push '(tool-bar-lines . 0) default-frame-alist)
+  (push '(vertical-scroll-bars) default-frame-alist)
+#+end_src
+
+* Tree-sitter
+** dockerfile-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package dockerfile-ts-mode
+    :mode (("\\Dockerfile\\'" . dockerfile-ts-mode)
+           ("\\.dockerignore\\'" . dockerfile-ts-mode)))
+#+end_src
+
+** elixir-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package elixir-ts-mode
+    :mode (("\\.ex\\'" . elixir-ts-mode)
+           ("\\.exs\\'" . elixir-ts-mode)
+           ("\\mix.lock\\'" . elixir-ts-mode)))
+#+end_src
+
+** json-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package json-ts-mode
+    :mode ("\\.json\\'"))
+#+end_src
+
+** toml-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package toml-ts-mode
+    :mode ("\\.toml\\'"))
+#+end_src
+
+** tsx-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package tsx-ts-mode
+    :mode ("\\.jsx\\'" "\\.tsx\\'")
+    :hook (tsx-ts-mode . lsp-deferred))
+#+end_src
+
+** typescript-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package typescript-ts-mode
+    :mode ("\\.js\\'" "\\.ts\\'" "\\.cjs\\'" "\\.mjs\\'" "\\.mts\\'")
+    :hook (typescript-ts-mode . lsp-deferred))
+#+end_src
+
+** yaml-ts-mode
+
+#+begin_src emacs-lisp
+  (use-package yaml-ts-mode
+    :mode ("\\.ya?ml\\'"))
+#+end_src
+
+* Packages
+** avy
+
+#+begin_src emacs-lisp
+  (use-package avy
+    :bind (("C-;" . avy-goto-char-2)
+           :map isearch-mode-map
+           ("C-;" . avy-isearch))
+    :config
+    (avy-setup-default))
+#+end_src
+
+** cape
+
+#+begin_src emacs-lisp
+  (use-package cape
+    :bind ("C-c ." . cape-prefix-map)
+    :init
+    ;; Add to the global default value of `completion-at-point-functions' which is
+    ;; used by `completion-at-point'.  The order of the functions matters, the
+    ;; first function returning a result wins.  Note that the list of buffer-local
+    ;; completion functions takes precedence over the global list.
+    (add-hook 'completion-at-point-functions #'cape-dabbrev)
+    (add-hook 'completion-at-point-functions #'cape-file)
+    (add-hook 'completion-at-point-functions #'cape-abbrev))
+#+end_src
+
+** consult
+
+#+begin_src emacs-lisp
+  (use-package consult
+    :bind (("C-c h" . consult-history)
+           ("C-c i" . consult-info)
+           ("C-x b" . consult-buffer) ;; orig. `switch-to-buffer'
+           ("C-x 4 b" . consult-buffer-other-window) ;; orig. `switch-to-buffer-other-window'
+           ("C-x p b" . consult-project-buffer) ;; orig. `project-switch-to-buffer'
+           ("M-g o" . consult-outline)
+           ("M-g i" . consult-imenu)
+           ("M-s g" . consult-ripgrep)
+           ("M-s l" . consult-line))
+    :config
+    ;; Use Consult to select xref locations with preview.
+    (setq xref-show-xrefs-function #'consult-xref
+          xref-show-definitions-function #'consult-xref))
+#+end_src
+
+** corfu
+
+#+begin_src emacs-lisp
+  (use-package corfu
+    :custom
+    (completion-ignore-case t)
+    (tab-always-indent 'complete)
+    :config
+    (bind-key "SPC" #'corfu-insert-separator corfu-map)
+    (add-hook 'eshell-mode-hook (lambda ()
+                                  (setq-local corfu-auto nil)))
+    ;; Free the RET key for less intrusive behavior.
+    (keymap-unset corfu-map "RET")
+    (global-corfu-mode 1))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package corfu-popupinfo
+    :hook (corfu-mode . corfu-popupinfo-mode)
+    :custom
+    (corfu-popupinfo-delay '(nil . 0.2)) ;; hide the popup initially
+    (corfu-popupinfo-max-height 20))
+#+end_src
+
+** dired
+
+#+begin_src emacs-lisp
+  (use-package dired
+    :custom
+    (dired-dwim-target t)
+    (dired-kill-when-opening-new-dired-buffer t)
+    (dired-listing-switches "-alh")
+    (dired-vc-rename-file t))
+#+end_src
+
+** eat
+
+#+begin_src emacs-lisp
+  (use-package eat
+    :hook (eshell-mode . eat-eshell-mode))
+#+end_src
+
+** ediff
+
+#+begin_src emacs-lisp
+  (use-package ediff
+    :custom
+    (ediff-diff-options "-w")
+    (ediff-window-setup-function #'ediff-setup-windows-plain))
+#+end_src
+
+** emacs
+
+This pseudo-package represents Emacs itself, and configures many
+variables and advices that relate to core functionality that isn't
+considered a "package" unto itself.
+
+#+begin_src emacs-lisp
+  (use-package emacs
+    :demand t
+    :bind* (("<f6>" . whitespace-mode)
+            ("<f7>" . display-line-numbers-mode)
+            ("<f8>" . hl-line-mode)
+            ("C-<" . hs-hide-block)
+            ("C->" . hs-show-block)
+            ("C-x C-d" . duplicate-line) ;; orig. `list-directory'
+            ("C-c z" . delete-trailing-whitespace))
+    :custom
+    ;; Open the *scratch* buffer when Emacs starts.
+    (inhibit-startup-screen t)
+    (initial-buffer-choice t)
+
+    ;; Show column numbers in the mode line.
+    (column-number-mode 1)
+
+    ;; Show line numbers in all buffers.
+    (global-display-line-numbers-mode 1)
+    (display-line-numbers-type 'relative)
+
+    ;; Show the current file's full path in the title.
+    (frame-title-format
+     '(:eval (if buffer-file-name default-directory "%b")))
+
+    ;; Write customizations to a temporary file.
+    (custom-file (make-temp-file "emacs-custom-"))
+
+    ;; Replace active selection when typing.
+    (delete-selection-mode 1)
+
+    ;; Automatically detect and reload files when they change on disk.
+    (auto-revert-verbose t)
+    (global-auto-revert-mode 1)
+
+    ;; Hide commands in M-x which do not work in the current mode.
+    (read-extended-command-predicate #'command-completion-default-include-p)
+
+    ;; Save minibuffer history.
+    (savehist-mode 1)
+
+    ;; Enable numbered backup files and store them in a central
+    ;; location.
+    (version-control t)
+    (delete-old-versions t)
+    (backup-directory-alist `(("." . ,(expand-file-name
+                                       (concat user-emacs-directory "backups")))))
+
+    ;; Use SPC instead of TAB for indentation.
+    (indent-tabs-mode nil)
+
+    ;; The default behavior in Emacs is that TAB just indents the
+    ;; current line.  We want TAB to both indent and complete the thing
+    ;; at point.
+    (tab-always-indent 'complete)
+    (tab-width 2)
+
+    ;; Display the key bindings for incomplete commands in a popup.
+    (which-key-mode 1)
+
+    :config
+    ;; Highlight trailing whitespace for programming modes.
+    (add-hook 'prog-mode-hook (lambda ()
+                                (setq show-trailing-whitespace t)))
+
+    ;; Enable some useful commands which are disabled by default.
+    (dolist (cmd '(dired-find-alternate-file
+                   downcase-region
+                   narrow-to-region
+                   upcase-region))
+      (put cmd 'disabled nil)))
+#+end_src
+
+** embark
+
+#+begin_src emacs-lisp
+  (use-package embark
+    :bind (("C-." . embark-act)
+           ("M-." . embark-dwim) ;; orig. `xref-find-definitions'
+           ([remap describe-bindings] . embark-bindings))
+    :config
+    (setq prefix-help-command #'embark-prefix-help-command)
+
+    ;; Embark actions for this buffer/file.
+    (defun embark-target-this-buffer-file ()
+      (cons 'this-buffer-file (buffer-name)))
+
+    (add-to-list 'embark-target-finders #'embark-target-this-buffer-file 'append)
+
+    (defvar-keymap embark-this-buffer-file-map
+      :doc "Commands to act on the current file or buffer."
+      :parent embark-general-map)
+
+    (add-to-list 'embark-keymap-alist '(this-buffer-file . embark-this-buffer-file-map)))
+#+end_src
+
+** embark-consult
+
+#+begin_src emacs-lisp
+  (use-package embark-consult)
+#+end_src
+
+** expand-region
+
+#+begin_src emacs-lisp
+  (use-package expand-region
+    :bind* ("C-," . er/expand-region))
+#+end_src
+
+** flycheck
+
+#+begin_src emacs-lisp
+  (use-package flycheck
+    :bind (("M-n" . flycheck-next-error)
+           ("M-p" . flycheck-previous-error))
+    :config
+    (add-hook 'after-init-hook #'global-flycheck-mode))
+#+end_src
+
+** forge
+
+#+begin_src emacs-lisp
+  (use-package forge
+    :after magit
+    :config
+    ;; Hide issues from the `magit' status buffer.
+    (remove-hook 'magit-status-sections-hook 'forge-insert-issues))
+#+end_src
+
+** gptel
+
+#+begin_src emacs-lisp
+  (use-package gptel
+    :commands (gptel gptel-send gptel-rewrite)
+    :bind (("<C-return>" . other-window)
+           ("C-c <return>" . gptel-send)
+           ("C-c C-SPC" . gptel-menu)
+           ("C-c C-g" . gptel-abort)
+           ("C-c r" . gptel-rewrite)
+           :map embark-region-map
+           ("+" . gptel-add)
+           :map embark-this-buffer-file-map
+           ("+" . gptel-add))
+    :hook (gptel-mode . visual-line-mode)
+    :custom
+    (gptel-default-mode 'org-mode)
+    :config
+    (add-hook 'gptel-mode-hook (lambda ()
+                                 (display-line-numbers-mode -1)))
+
+    (require 'gptel-gh)
+
+    (defvar gptel--copilot
+      (gptel-make-gh-copilot "Copilot"))
+
+    (setq-default gptel-model 'gpt-4.1
+                  gptel-backend gptel--copilot))
+#+end_src
+
+** helpful
+
+#+begin_src emacs-lisp
+  (use-package helpful
+    :bind (("C-c C-d" . helpful-at-point)
+           ([remap describe-command] . helpful-command)
+           ([remap describe-function] . helpful-callable)
+           ([remap describe-key] . helpful-key)
+           ([remap describe-variable] . helpful-variable)
+           ([remap describe-symbol] . helpful-symbol)))
+#+end_src
+
+** jinx
+
+#+begin_src emacs-lisp
+  (use-package jinx
+    :bind (("M-$" . jinx-correct)
+           ("C-M-$" . jinx-languages))
+    :hook ((text-mode org-mode markdown-mode) . jinx-mode))
+#+end_src
+
+** lsp-mode
+
+#+begin_src emacs-lisp
+  (use-package lsp-mode
+    :bind (("C-c C-l" . lsp-mode)
+           :map lsp-mode-map
+           ("C-q" . lsp-ui-doc-glance))
+    :custom
+    (lsp-completion-provider :none) ;; we use Corfu!
+    (lsp-eldoc-enable-hover nil)
+    (lsp-headerline-breadcrumb-enable nil)
+    (lsp-keymap-prefix "C-c l")
+    (lsp-modeline-code-action-fallback-icon "")
+    (lsp-progress-prefix "")
+    :config
+    (setq read-process-output-max (* 1024 1024)) ;; 1 MB
+
+    (defun my/lsp-help-mode-face-remap ()
+      (face-remap-add-relative 'markdown-code-face 'default))
+    (add-hook 'lsp-help-mode-hook #'my/lsp-help-mode-face-remap)
+
+    (defun my/lsp-mode-setup-completion ()
+      (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
+            '(orderless))
+      ;; The Capf-Buster ensures that you always get a fresh set of candidates!
+      (setq-local completion-at-point-functions (list (cape-capf-buster #'lsp-completion-at-point))))
+    (add-hook 'lsp-completion-mode-hook #'my/lsp-mode-setup-completion))
+#+end_src
+
+*** emacs-lsp-booster
+
+#+begin_src emacs-lisp
+  (defun lsp-booster--advice-json-parse (old-fn &rest args)
+    "Try to parse bytecode instead of json."
+    (or
+     (when (equal (following-char) ?#)
+       (let ((bytecode (read (current-buffer))))
+         (when (byte-code-function-p bytecode)
+           (funcall bytecode))))
+     (apply old-fn args)))
+  (advice-add (if (progn (require 'json)
+                         (fboundp 'json-parse-buffer))
+                  'json-parse-buffer
+                'json-read)
+              :around
+              #'lsp-booster--advice-json-parse)
+
+  (defun lsp-booster--advice-final-command (old-fn cmd &optional test?)
+    "Prepend emacs-lsp-booster command to lsp CMD."
+    (let ((orig-result (funcall old-fn cmd test?)))
+      (if (and (not test?)                             ;; for check lsp-server-present?
+               (not (file-remote-p default-directory)) ;; see lsp-resolve-final-command, it would add extra shell wrapper
+               lsp-use-plists
+               (not (functionp 'json-rpc-connection))  ;; native json-rpc
+               (executable-find "emacs-lsp-booster"))
+          (progn
+            (when-let ((command-from-exec-path (executable-find (car orig-result))))  ;; resolve command from exec-path (in case not found in $PATH)
+              (setcar orig-result command-from-exec-path))
+            (message "Using emacs-lsp-booster for %s!" orig-result)
+            (cons "emacs-lsp-booster" orig-result))
+        orig-result)))
+  (advice-add 'lsp-resolve-final-command :around #'lsp-booster--advice-final-command)
+#+end_src
+
+** lsp-ui
+
+#+begin_src emacs-lisp
+  (use-package lsp-ui
+    :custom
+    (lsp-ui-doc-position 'at-point)
+    :config
+    (bind-key [remap xref-find-definitions] #'lsp-ui-peek-find-definitions lsp-ui-mode-map)
+    (bind-key [remap xref-find-references] #'lsp-ui-peek-find-references lsp-ui-mode-map))
+#+end_src
+
+** magit
+
+#+begin_src emacs-lisp
+  (use-package magit
+    :bind ("C-x g" . magit-status)
+    :hook (magit-mode . hl-line-mode)
+    :custom
+    (magit-diff-refine-hunk 'all)
+    :config
+    (transient-bind-q-to-quit)
+    (defun my/magit-disable-whitespace-mode ()
+      "Disable `whitespace-mode' in Magit buffers."
+      (whitespace-mode -1))
+    (add-hook 'magit-section-mode-hook #'my/magit-disable-whitespace-mode))
+#+end_src
+
+** marginalia
+
+#+begin_src emacs-lisp
+  (use-package marginalia
+    :config
+    (marginalia-mode 1))
+#+end_src
+
+** markdown-mode
+
+#+begin_src emacs-lisp
+  (use-package markdown-mode
+    :mode (("README\\.md\\'" . gfm-mode)
+           ("\\.md\\'" . markdown-mode)))
+#+end_src
+
+** modus-themes
+
+#+begin_src emacs-lisp
+  (use-package modus-themes
+    :custom
+    (modus-themes-italic-constructs t)
+    (modus-themes-to-toggle '(modus-operandi modus-vivendi))
+    :config
+    (defun my/modus-themes-custom-faces (&rest _)
+      (modus-themes-with-colors
+        (setq lsp-ui-doc-border border)
+        (custom-set-faces
+         `(diff-hl-change ((,c :foreground ,bg-changed-fringe :background unspecified)))
+         `(diff-hl-delete ((,c :foreground ,bg-removed-fringe :background unspecified)))
+         `(diff-hl-insert ((,c :foreground ,bg-added-fringe :background unspecified)))
+
+         `(lsp-ui-doc-background ((,c :background ,bg-dim)))
+         `(lsp-ui-peek-filename ((t :inherit (xref-file-header italic))))
+         `(lsp-ui-peek-footer ((,c :background ,bg-active)))
+         `(lsp-ui-peek-header ((,c :background ,bg-active :foreground ,fg-main)))
+         `(lsp-ui-peek-highlight ((t :inherit xref-match)))
+         `(lsp-ui-peek-line-number ((t :inherit xref-line-number)))
+         `(lsp-ui-peek-list ((,c :background ,bg-dim)))
+         `(lsp-ui-peek-peek ((,c :background ,bg-dim)))
+         `(lsp-ui-peek-selection ((,c :inherit modus-themes-completion-selected))))))
+    (add-hook 'modus-themes-post-load-hook #'my/modus-themes-custom-faces)
+
+    (setq modus-themes-common-palette-overrides
+          `((bg-mode-line-active bg-inactive)
+            (bg-mode-line-inactive bg-dim)
+            (border-mode-line-active fg-dim)
+            (border-mode-line-inactive bg-active)
+
+            (fringe unspecified)
+
+            (bg-region bg-inactive)
+            (fg-region unspecified)
+
+            (fg-line-number-active fg-alt)
+            (fg-line-number-inactive bg-inactive)
+            (bg-line-number-active unspecified)
+            (bg-line-number-inactive unspecified)))
+
+    (modus-themes-load-theme 'modus-vivendi)
+
+    (bind-key "<f5>" #'modus-themes-toggle))
+#+end_src
+
+** move-text
+
+#+begin_src emacs-lisp
+  (use-package move-text
+    :bind (("C-M-n" . move-text-down) ;; orig. `forward-list'
+           ("C-M-p" . move-text-up)) ;; orig. `backward-list'
+    :preface
+    (defun indent-region-advice (&rest ignored)
+      (let ((deactivate deactivate-mark))
+        (if (region-active-p)
+            (indent-region (region-beginning) (region-end))
+          (indent-region (line-beginning-position) (line-end-position)))
+        (setq deactivate-mark deactivate)))
+    :config
+    (move-text-default-bindings)
+
+    (advice-add #'move-text-up :after 'indent-region-advice)
+    (advice-add #'move-text-down :after 'indent-region-advice))
+#+end_src
+
+** nix-mode
+
+#+begin_src emacs-lisp
+  (use-package nix-mode
+    :mode "\\.nix\\'"
+    :custom
+    (nix-indent-function 'nix-indent-line))
+#+end_src
+
+** orderless
+
+#+begin_src emacs-lisp
+  (use-package orderless
+    :custom
+    (completion-styles '(orderless basic))
+    (completion-category-overrides '((file (styles basic partial-completion)))))
+#+end_src
+
+** perspective
+
+#+begin_src emacs-lisp
+  (use-package perspective
+    :custom
+    (persp-mode-prefix-key (kbd "C-z"))
+    :init
+    (persp-mode 1))
+
+  (use-package perspective-consult
+    :no-require t
+    :after (perspective consult)
+    :config
+    (consult-customize consult--source-buffer :hidden t :default nil)
+    (add-to-list 'consult-buffer-sources persp-consult-source))
+#+end_src
+
+** project
+
+#+begin_src emacs-lisp
+  (use-package project
+    :preface
+    (defun my/project-switch-project-personal ()
+      (interactive)
+      (let* ((filtered (mapcar #'list (cl-remove-if
+                                       (lambda (p)
+                                         (string-prefix-p "~/work" p))
+                                       (project-known-project-roots))))
+             (project--list filtered))
+        (call-interactively #'project-switch-project)))
+    :config
+    (bind-key "C-x p p" #'my/project-switch-project-personal)
+    (bind-key "C-x p w" #'project-switch-project))
+#+end_src
+
+** vertico
+
+#+begin_src emacs-lisp
+  (use-package vertico
+    :custom
+    (vertico-cycle t)
+    :config
+    (bind-keys :map vertico-map
+               ("C-M-n" . vertico-next-group)
+               ("C-M-p" . vertico-previous-group))
+    (vertico-mode 1))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package vertico-multiform
+    :after vertico
+    :custom
+    (vertico-multiform-commands
+     '((consult-ripgrep buffer)
+       (consult-xref buffer)
+       (embark-bindings buffer)))
+    :config
+    (vertico-multiform-mode 1))
+#+end_src
+
+** wgrep
+
+#+begin_src emacs-lisp
+  (use-package wgrep
+    :custom
+    (wgrep-auto-save-buffer t))
+#+end_src
+
+** yasnippet
+
+#+begin_src emacs-lisp
+  (use-package yasnippet
+    :hook (prog-mode . yas-minor-mode-on)
+    :custom
+    (yas-triggers-in-field t)
+    (yas-wrap-around-region t)
+    :config
+    (yas-reload-all))
+#+end_src

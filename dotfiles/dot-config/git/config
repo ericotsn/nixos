@@ -1,0 +1,9 @@
+[user]
+	name = Eric Ottosson
+	email = noreply@eotsn.com
+
+[github]
+	user = eotsn
+
+[includeif "gitdir:~/work/"]
+	path = "~/work/.gitconfig"

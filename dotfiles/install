@@ -1,0 +1,10 @@
+#!/bin/bash
+if command -v stow >/dev/null 2>&1; then
+    stow --dotfiles --target=$HOME .
+else
+    nix-shell -p stow --run "stow --dotfiles --target=$HOME ."
+fi
+
+if command -v emacs >/dev/null 2>&1; then
+    cd dot-emacs.d && emacs -Q --batch init.org -f org-babel-tangle
+fi

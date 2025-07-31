@@ -1,0 +1,14 @@
+result
+
+*~
+.lsp-session*
+early-init.el
+forge*
+history
+init.el
+projects.eld
+
+.cache/
+eln-cache/
+transient/
+url/
