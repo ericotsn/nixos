@@ -142,6 +142,7 @@ ensure normal operation.
            ("C-x p b" . consult-project-buffer) ;; orig. `project-switch-to-buffer'
            ("M-g o" . consult-outline)
            ("M-g i" . consult-imenu)
+           ("M-g f" . consult-flymake)
            ("M-s g" . consult-ripgrep)
            ("M-s l" . consult-line))
     :config
