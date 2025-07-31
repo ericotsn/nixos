@@ -43,7 +43,7 @@ ensure normal operation.
 
 #+begin_src emacs-lisp
   (push '(alpha-background . 95) default-frame-alist)
-  (push '(font . "PragmataPro Mono-16") default-frame-alist)
+  (push '(font . "PragmataPro Liga-15") default-frame-alist)
   (push '(menu-bar-lines . 0) default-frame-alist)
   (push '(tool-bar-lines . 0) default-frame-alist)
   (push '(vertical-scroll-bars) default-frame-alist)
