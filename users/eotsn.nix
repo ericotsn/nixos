@@ -47,6 +47,7 @@
   };
 
   programs.fzf.enable = true;
+  programs.zoxide.enable = true;
 
   programs._1password.enable = true;
   programs._1password-gui = {
