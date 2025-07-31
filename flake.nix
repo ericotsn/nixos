@@ -17,10 +17,6 @@
     let
       overlays = [
         emacs-overlay.overlays.default
-
-        (final: prev: {
-          emacs-with-pkgs = final.callPackage ./pkgs/emacs.nix { };
-        })
       ];
     in
     {

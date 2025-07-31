@@ -3,7 +3,6 @@
 {
   imports = [
     ./vm-aarch64-hardware.nix
-    ../modules/specialisations/exwm.nix
     ../modules/specialisations/xmonad.nix
   ];
 
