@@ -431,6 +431,13 @@ considered a "package" unto itself.
   (use-package embark-consult)
 #+end_src
 
+** envrc
+
+#+begin_src emacs-lisp
+  (use-package envrc
+    :hook (after-init . envrc-global-mode))
+#+end_src
+
 ** expand-region
 
 #+begin_src emacs-lisp

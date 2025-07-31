@@ -41,6 +41,7 @@ let
       eat
       embark
       embark-consult
+      envrc
       expand-region
       forge
       gptel
