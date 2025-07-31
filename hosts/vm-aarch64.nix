@@ -31,6 +31,8 @@
 
   virtualisation.vmware.guest.enable = true;
 
+  virtualisation.docker.enable = true;
+
   # Mount VMWare Shared Folders.
   fileSystems."/host" = {
     fsType = "fuse./run/current-system/sw/bin/vmhgfs-fuse";

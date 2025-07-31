@@ -14,19 +14,21 @@
 
   users.users.eotsn = {
     isNormalUser = true;
-    extraGroups = [ "wheel" ];
+    extraGroups = [ "docker" "wheel" ];
     shell = pkgs.fish;
     hashedPassword = "$y$j9T$nsVaUSOUNIrbKtne7xTVQ/$EciO.2vyatQ7gAFv3NdCu5JazMgAzQ1rp4FMu/PhLpC";
   };
 
   environment.systemPackages = with pkgs; [
     alacritty
+    docker-compose
     fd
     git
     hunspell # Spell checker
     hunspellDicts.en_US
     hunspellDicts.sv_SE
     jq
+    lazydocker
     nodejs_22 # LTS
     opencode # AI coding agent, built for the terminal
     ripgrep
