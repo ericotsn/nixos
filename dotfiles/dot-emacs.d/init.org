@@ -155,10 +155,15 @@ ensure normal operation.
 #+begin_src emacs-lisp
   (use-package corfu
     :custom
+    (corfu-auto t)
+    (corfu-auto-delay 0.25)
+    (corfu-auto-prefix 2)
+    (corfu-cycle t)
+    (corfu-quit-no-match 'separator)
     (completion-ignore-case t)
     (tab-always-indent 'complete)
     :config
-    (bind-key "SPC" #'corfu-insert-separator corfu-map)
+    (bind-key "C-SPC" #'corfu-insert-separator corfu-map)
     (add-hook 'eshell-mode-hook (lambda ()
                                   (setq-local corfu-auto nil)))
     ;; Free the RET key for less intrusive behavior.
