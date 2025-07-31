@@ -33,6 +33,8 @@
     ripgrep
     unzip
     vim
+    typescript-language-server
+    vtsls # LSP wrapper for vscode's typescript extension
   ];
 
   environment.sessionVariables = {

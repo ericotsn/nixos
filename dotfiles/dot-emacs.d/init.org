@@ -86,7 +86,7 @@ ensure normal operation.
 #+begin_src emacs-lisp
   (use-package tsx-ts-mode
     :mode ("\\.jsx\\'" "\\.tsx\\'")
-    :hook (tsx-ts-mode . lsp-deferred))
+    :hook (tsx-ts-mode . eglot-ensure))
 #+end_src
 
 ** typescript-ts-mode
@@ -94,7 +94,7 @@ ensure normal operation.
 #+begin_src emacs-lisp
   (use-package typescript-ts-mode
     :mode ("\\.js\\'" "\\.ts\\'" "\\.cjs\\'" "\\.mjs\\'" "\\.mts\\'")
-    :hook (typescript-ts-mode . lsp-deferred))
+    :hook (typescript-ts-mode . eglot-ensure))
 #+end_src
 
 ** yaml-ts-mode
@@ -201,6 +201,30 @@ ensure normal operation.
     (ediff-window-setup-function #'ediff-setup-windows-plain))
 #+end_src
 
+** eglot
+
+#+begin_src emacs-lisp
+  (use-package eglot
+    :custom
+    (eglot-auto-shutdown t)
+    (eglot-code-action-indicator "")
+    (eglot-extend-to-xref t)
+    (eldoc-echo-area-use-multiline-p nil)
+    :config
+    (setq read-process-output-max (* 1024 1024)) ;; 1 MB
+
+    (add-to-list 'eglot-server-programs
+                 '(((js-mode :language-id "javascript")
+                    (js-ts-mode :language-id "javascript")
+                    (tsx-ts-mode :language-id "typescriptreact")
+                    (typescript-ts-mode :language-id "typescript")
+                    (typescript-mode :language-id "typescript"))
+                   . ("vtsls" "--stdio")))
+
+    (add-to-list 'completion-category-overrides
+                 '(eglot (styles orderless basic))))
+#+end_src
+
 ** emacs
 
 This pseudo-package represents Emacs itself, and configures many
@@ -273,6 +297,10 @@ considered a "package" unto itself.
     (add-hook 'prog-mode-hook (lambda ()
                                 (setq show-trailing-whitespace t)))
 
+    ;; Don't wrap lines while programming.
+    (add-hook 'prog-mode-hook (lambda ()
+                                (setq truncate-lines t)))
+
     ;; Enable some useful commands which are disabled by default.
     (dolist (cmd '(dired-find-alternate-file
                    downcase-region
@@ -317,14 +345,16 @@ considered a "package" unto itself.
     :bind* ("C-," . er/expand-region))
 #+end_src
 
-** flycheck
+** flymake
 
 #+begin_src emacs-lisp
-  (use-package flycheck
-    :bind (("M-n" . flycheck-next-error)
-           ("M-p" . flycheck-previous-error))
+  (use-package flymake
+    :custom
+    (flymake-show-diagnostics-at-end-of-line t)
     :config
-    (add-hook 'after-init-hook #'global-flycheck-mode))
+    (bind-keys :map flymake-mode-map
+               ("M-n" . flymake-goto-next-error)
+               ("M-p" . flymake-goto-prev-error)))
 #+end_src
 
 ** forge
@@ -388,81 +418,6 @@ considered a "package" unto itself.
     :hook ((text-mode org-mode markdown-mode) . jinx-mode))
 #+end_src
 
-** lsp-mode
-
-#+begin_src emacs-lisp
-  (use-package lsp-mode
-    :bind (("C-c C-l" . lsp-mode)
-           :map lsp-mode-map
-           ("C-q" . lsp-ui-doc-glance))
-    :custom
-    (lsp-completion-provider :none) ;; we use Corfu!
-    (lsp-eldoc-enable-hover nil)
-    (lsp-headerline-breadcrumb-enable nil)
-    (lsp-keymap-prefix "C-c l")
-    (lsp-modeline-code-action-fallback-icon "")
-    (lsp-progress-prefix "")
-    :config
-    (setq read-process-output-max (* 1024 1024)) ;; 1 MB
-
-    (defun my/lsp-help-mode-face-remap ()
-      (face-remap-add-relative 'markdown-code-face 'default))
-    (add-hook 'lsp-help-mode-hook #'my/lsp-help-mode-face-remap)
-
-    (defun my/lsp-mode-setup-completion ()
-      (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
-            '(orderless))
-      ;; The Capf-Buster ensures that you always get a fresh set of candidates!
-      (setq-local completion-at-point-functions (list (cape-capf-buster #'lsp-completion-at-point))))
-    (add-hook 'lsp-completion-mode-hook #'my/lsp-mode-setup-completion))
-#+end_src
-
-*** emacs-lsp-booster
-
-#+begin_src emacs-lisp
-  (defun lsp-booster--advice-json-parse (old-fn &rest args)
-    "Try to parse bytecode instead of json."
-    (or
-     (when (equal (following-char) ?#)
-       (let ((bytecode (read (current-buffer))))
-         (when (byte-code-function-p bytecode)
-           (funcall bytecode))))
-     (apply old-fn args)))
-  (advice-add (if (progn (require 'json)
-                         (fboundp 'json-parse-buffer))
-                  'json-parse-buffer
-                'json-read)
-              :around
-              #'lsp-booster--advice-json-parse)
-
-  (defun lsp-booster--advice-final-command (old-fn cmd &optional test?)
-    "Prepend emacs-lsp-booster command to lsp CMD."
-    (let ((orig-result (funcall old-fn cmd test?)))
-      (if (and (not test?)                             ;; for check lsp-server-present?
-               (not (file-remote-p default-directory)) ;; see lsp-resolve-final-command, it would add extra shell wrapper
-               lsp-use-plists
-               (not (functionp 'json-rpc-connection))  ;; native json-rpc
-               (executable-find "emacs-lsp-booster"))
-          (progn
-            (when-let ((command-from-exec-path (executable-find (car orig-result))))  ;; resolve command from exec-path (in case not found in $PATH)
-              (setcar orig-result command-from-exec-path))
-            (message "Using emacs-lsp-booster for %s!" orig-result)
-            (cons "emacs-lsp-booster" orig-result))
-        orig-result)))
-  (advice-add 'lsp-resolve-final-command :around #'lsp-booster--advice-final-command)
-#+end_src
-
-** lsp-ui
-
-#+begin_src emacs-lisp
-  (use-package lsp-ui
-    :custom
-    (lsp-ui-doc-position 'at-point)
-    :config
-    (bind-key [remap xref-find-definitions] #'lsp-ui-peek-find-definitions lsp-ui-mode-map)
-    (bind-key [remap xref-find-references] #'lsp-ui-peek-find-references lsp-ui-mode-map))
-#+end_src
-
 ** magit
 
 #+begin_src emacs-lisp
@@ -507,19 +462,10 @@ considered a "package" unto itself.
       (modus-themes-with-colors
         (setq lsp-ui-doc-border border)
         (custom-set-faces
-         `(diff-hl-change ((,c :foreground ,bg-changed-fringe :background unspecified)))
-         `(diff-hl-delete ((,c :foreground ,bg-removed-fringe :background unspecified)))
-         `(diff-hl-insert ((,c :foreground ,bg-added-fringe :background unspecified)))
-
-         `(lsp-ui-doc-background ((,c :background ,bg-dim)))
-         `(lsp-ui-peek-filename ((t :inherit (xref-file-header italic))))
-         `(lsp-ui-peek-footer ((,c :background ,bg-active)))
-         `(lsp-ui-peek-header ((,c :background ,bg-active :foreground ,fg-main)))
-         `(lsp-ui-peek-highlight ((t :inherit xref-match)))
-         `(lsp-ui-peek-line-number ((t :inherit xref-line-number)))
-         `(lsp-ui-peek-list ((,c :background ,bg-dim)))
-         `(lsp-ui-peek-peek ((,c :background ,bg-dim)))
-         `(lsp-ui-peek-selection ((,c :inherit modus-themes-completion-selected))))))
+         `(flymake-end-of-line-diagnostics-face ((,c :box nil)))
+         `(flymake-error-echo-at-eol ((,c :foreground ,red-cooler :background ,bg-red-nuanced)))
+         `(flymake-note-echo-at-eol ((,c :foreground ,cyan-cooler :background ,bg-cyan-nuanced )))
+         `(flymake-warning-echo-at-eol ((,c :foreground ,yellow-cooler :background ,bg-yellow-nuanced))))))
     (add-hook 'modus-themes-post-load-hook #'my/modus-themes-custom-faces)
 
     (setq modus-themes-common-palette-overrides

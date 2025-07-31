@@ -42,13 +42,10 @@ let
       embark
       embark-consult
       expand-region
-      flycheck
       forge
       gptel
       helpful
       jinx
-      lsp-mode
-      lsp-ui
       magit
       marginalia
       markdown-mode
