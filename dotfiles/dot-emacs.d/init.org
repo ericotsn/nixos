@@ -1,6 +1,6 @@
 #+title: My Emacs Configuration
 #+property: header-args :tangle yes :tangle-mode: #o444 :results silent
-#+startup: indent
+#+startup: content indent
 
 #+begin_src emacs-lisp
   ;;; init.el -*- lexical-binding: t; -*-
@@ -42,10 +42,10 @@ ensure normal operation.
 
 *** UI
 
-Use =default-frame-alist= to set default frame parameters. This is
-slightly more efficient compared to using built-in commands to toggle
-these settings, as it reduced the amount of Elisp that needs to be
-evaluated.
+Use =default-frame-alist= to enable, disable or set initial interface
+options. This is /slightly/ more efficient compared to using built-in
+commands to toggle these settings, as it reduced the amount of Elisp
+that needs to be evaluated during startup.
 
 #+begin_src emacs-lisp
   (push '(alpha-background . 95) default-frame-alist)
@@ -115,6 +115,12 @@ for various 3rd party packages.
 
 * Packages
 
+This is a curated list of packages which I've assembled using Emacs
+for professional software development. Generally I only add a new
+package if there's no easy way to achieve the same functionality using
+built-in functions, and I tend to use default settings and only
+customize when I need to.
+
 ** avy
 
 #+begin_src emacs-lisp
@@ -132,9 +138,9 @@ for various 3rd party packages.
   (use-package cape
     :bind ("C-c ." . cape-prefix-map)
     :init
-    ;; The order of the functions matters, the first function returning
-    ;; a result wins.  Note that the list of buffer-local completion
-    ;; functions takes precedence over the global list.
+    ;; The order of the functions matters, as the first function
+    ;; returning a result wins.  Note that the list of buffer-local
+    ;; completion functions takes precedence over the global list.
     (add-hook 'completion-at-point-functions #'cape-dabbrev)
     (add-hook 'completion-at-point-functions #'cape-file)
     (add-hook 'completion-at-point-functions #'cape-abbrev))
@@ -167,7 +173,7 @@ for various 3rd party packages.
     :custom
     (corfu-auto t)
     (corfu-auto-delay 0.25)
-    (corfu-auto-prefix 2)
+    (corfu-auto-prefix 3) ;; allocate 2 characters for snippets
     (corfu-cycle t)
     (corfu-quit-no-match 'separator)
     (completion-ignore-case t)
@@ -342,9 +348,9 @@ considered a "package" unto itself.
     ;; Show column numbers in the mode line.
     (column-number-mode 1)
 
-    ;; Show line numbers in all buffers.
-    (global-display-line-numbers-mode 1)
-    (display-line-numbers-type 'relative)
+    ;; Disable line numbers in all buffers.
+    (global-display-line-numbers-mode nil)
+    ;; (display-line-numbers-type 'relative)
 
     ;; Show the current file's full path in the title.
     (frame-title-format
@@ -476,6 +482,12 @@ considered a "package" unto itself.
 
 ** gptel
 
+There's many dangers and pitfalls with AI-driven development, but for
+the wary developer there's a lot of benefit of code generation in
+certain areas. What makes AI even more powerful is tool integration,
+especially if your text editor is included in that list - which is the
+case with =gptel=.
+
 #+begin_src emacs-lisp
   (use-package gptel
     :commands (gptel gptel-send gptel-rewrite)
@@ -500,7 +512,7 @@ considered a "package" unto itself.
     (defvar gptel--copilot
       (gptel-make-gh-copilot "Copilot"))
 
-    (setq-default gptel-model 'gpt-4.1
+    (setq-default gptel-model 'claude-3.7-sonnet
                   gptel-backend gptel--copilot))
 #+end_src
 
@@ -563,6 +575,8 @@ considered a "package" unto itself.
   (use-package modus-themes
     :custom
     (modus-themes-italic-constructs t)
+    (modus-themes-prompts '(bold))
+    (modus-themes-headings '((t . (regular 1.15))))
     (modus-themes-to-toggle '(modus-operandi modus-vivendi))
     :config
     (defun my/modus-themes-custom-faces (&rest _)
