@@ -210,6 +210,10 @@ ensure normal operation.
 
 #+begin_src emacs-lisp
   (use-package eglot
+    :bind
+    (:map eglot-mode-map
+          ("C-c C-." . eglot-code-actions)
+          ("C-c C-," . eglot-rename))
     :custom
     (eglot-auto-shutdown t)
     (eglot-code-action-indicator "")
@@ -228,6 +232,89 @@ ensure normal operation.
 
     (add-to-list 'completion-category-overrides
                  '(eglot (styles orderless basic))))
+#+end_src
+
+*** eglot-overrides
+
+#+begin_src emacs-lisp
+  (use-package eglot-overrides
+    :no-require
+    :preface
+    (cl-defgeneric my/eglot-execute (server action)
+      (:method
+       (server action) "Default implementation."
+       (eglot--dcase action
+         (((Command))
+          ;; Convert to ExecuteCommandParams and recurse (bug#71642)
+          (cl-remf action :title)
+          (eglot-execute server action))
+         (((ExecuteCommandParams))
+          (eglot--request server :workspace/executeCommand action))
+         (((CodeAction) edit command data)
+          ;; [HACK] In the original implementation, command must be nil in
+          ;; order to trigger a codeAction/resolve request.  This is not
+          ;; compliant with the specification, assuming the client
+          ;; supports resolving the edit property lazily, so I've
+          ;; removed the condition.
+          (if (and (null edit) data
+                   (eglot-server-capable :codeActionProvider :resolveProvider))
+              (eglot-execute server (eglot--request server :codeAction/resolve action))
+            (when edit (eglot--apply-workspace-edit edit this-command))
+            (when command
+              ;; Recursive call with what must be a Command object (bug#71642)
+              (eglot-execute server command)))))))
+
+    (defun my/eglot--apply-workspace-edit (wedit origin)
+      (eglot--dbind ((WorkspaceEdit) changes documentChanges) wedit
+        (let ((prepared
+               (cl-remove-if
+                ;; [HACK] Some servers can send documentChanges that don't
+                ;; define any edits.  We drop these since I don't know
+                ;; how to deal with them.
+                (lambda (x) (cl-every #'null x))
+                (mapcar
+                 (eglot--lambda ((TextDocumentEdit) textDocument edits)
+                   (eglot--dbind ((VersionedTextDocumentIdentifier) uri version)
+                       textDocument
+                     (list (eglot-uri-to-path uri) edits version)))
+                 documentChanges))))
+          (unless (and changes documentChanges)
+            ;; We don't want double edits, and some servers send both
+            ;; changes and documentChanges.  This unless ensures that we
+            ;; prefer documentChanges over changes.
+            (cl-loop for (uri edits) on changes by #'cddr
+                     do (push (list (eglot-uri-to-path uri) edits) prepared)))
+          (cl-flet ((notevery-visited-p ()
+                      (cl-notevery #'find-buffer-visiting
+                                   (mapcar #'car prepared)))
+                    (accept-p ()
+                      (y-or-n-p
+                       (format "[eglot] Server wants to edit:\n%sProceed? "
+                               (cl-loop
+                                for (f eds _) in prepared
+                                concat (format
+                                        "  %s (%d change%s)\n"
+                                        f (length eds)
+                                        (if (> (length eds) 1) "s" ""))))))
+                    (apply ()
+                      (cl-loop for edit in prepared
+                               for (path edits version) = edit
+                               do (with-current-buffer (find-file-noselect path)
+                                    (eglot--apply-text-edits edits version))
+                               finally (eldoc) (eglot--message "Edit successful!"))))
+            (let ((decision (eglot--confirm-server-edits origin prepared)))
+              (cond
+               ((or (eq decision 'diff)
+                    (and (eq decision 'maybe-diff) (notevery-visited-p)))
+                (eglot--propose-changes-as-diff prepared))
+               ((or (memq decision '(t summary))
+                    (and (eq decision 'maybe-summary) (notevery-visited-p)))
+                (when (accept-p) (apply)))
+               (t
+                (apply))))))))
+    :config
+    (advice-add 'eglot-execute :override #'my/eglot-execute)
+    (advice-add 'eglot--apply-workspace-edit :override #'my/eglot--apply-workspace-edit))
 #+end_src
 
 ** emacs
