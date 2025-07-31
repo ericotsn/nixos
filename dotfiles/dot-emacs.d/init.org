@@ -627,6 +627,23 @@ considered a "package" unto itself.
     (completion-category-overrides '((file (styles basic partial-completion)))))
 #+end_src
 
+** org
+
+#+begin_src emacs-lisp
+  (use-package org
+    :custom
+    (org-M-RET-may-split-line '((default . nil)))
+    (org-insert-heading-respect-content t)
+    (org-log-done 'time)
+    (org-log-into-drawer t)
+
+    (org-directory "~/org")
+    (org-agenda-files (list org-directory))
+
+    (org-todo-keywords
+     '((sequence "TODO(t)" "WAIT(w!)" "|" "CANCEL(c!)" "DONE(d!)"))))
+#+end_src
+
 ** perspective
 
 #+begin_src emacs-lisp
