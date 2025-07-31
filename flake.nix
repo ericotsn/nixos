@@ -28,7 +28,7 @@
           { nixpkgs.overlays = overlays; }
 
           ./hosts/vm-aarch64.nix
-          ./users/eotsn.nix
+          ./users/ericotsn.nix
         ];
       };
     };
