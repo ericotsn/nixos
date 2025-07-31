@@ -28,6 +28,17 @@ let
     };
   };
 
+  modus-themes = pkgs.emacsPackages.trivialBuild rec {
+    pname = "modus-themes";
+    version = "5f9dc668511243d3cd26469d0574bba4a3aaf1d7";
+    src = pkgs.fetchFromGitHub {
+      owner = "protesilaos";
+      repo = "modus-themes";
+      rev = version;
+      sha256 = "sha256-ts1EZl09T8V+FliNERkf1Om8HzRoQtM/hqGPfzAt2Ww=";
+    };
+  };
+
   emacsPackages = (pkgs.emacsPackagesFor pkgs.emacs-git).overrideScope overrides;
 
   emacsWithPackages = emacsPackages.withPackages;
