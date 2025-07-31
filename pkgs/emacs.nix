@@ -17,6 +17,17 @@ let
     );
   };
 
+  pragmatapro-mode = pkgs.emacsPackages.trivialBuild rec {
+    pname = "pragmatapro-mode";
+    version = "fadcc2e5cff3d8e69d011b815efc7808533ec09b";
+    src = pkgs.fetchFromSourcehut {
+      owner = "~eotsn";
+      repo = "pragmatapro-mode";
+      rev = version;
+      sha256 = "sha256-V0oUAzs4uf0VAItk/MRMQIuEUFxedCEywwJ1O5z68C8=";
+    };
+  };
+
   emacsPackages = (pkgs.emacsPackagesFor pkgs.emacs-git).overrideScope overrides;
 
   emacsWithPackages = emacsPackages.withPackages;
@@ -46,6 +57,7 @@ let
       nix-mode
       orderless
       perspective
+      pragmatapro-mode
       vertico
       wgrep
       yasnippet

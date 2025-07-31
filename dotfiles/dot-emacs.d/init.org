@@ -598,6 +598,15 @@ considered a "package" unto itself.
     (add-to-list 'consult-buffer-sources persp-consult-source))
 #+end_src
 
+** pragmatapro-mode
+
+#+begin_src emacs-lisp
+  (use-package pragmatapro-mode
+    :hook (prog-mode . pragmatapro-mode)
+    :custom
+    (pragmatapro-enable-ligatures-in-comments t))
+#+end_src
+
 ** project
 
 #+begin_src emacs-lisp
