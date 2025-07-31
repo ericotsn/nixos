@@ -29,6 +29,7 @@
     hunspellDicts.sv_SE
     jq
     nodejs_22 # LTS
+    opencode # AI coding agent, built for the terminal
     pnpm
     ripgrep
     unzip
