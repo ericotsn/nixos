@@ -1,12 +1,13 @@
 result
 
 *~
+.DS_Store
 .lsp-session*
 early-init.el
 forge*
 history
 init.el
-projects.eld
+projects*
 
 .cache/
 eln-cache/
