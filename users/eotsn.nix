@@ -2,6 +2,7 @@
 
 {
   imports = [
+    ../modules/eza.nix
     ../modules/fzf.nix
   ];
 
@@ -46,6 +47,7 @@
     defaultEditor = true;
   };
 
+  programs.eza.enable = true;
   programs.fzf.enable = true;
   programs.zoxide.enable = true;
 
