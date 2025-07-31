@@ -3,6 +3,7 @@ import XMonad.Hooks.EwmhDesktops
 import XMonad.Layout.NoBorders
 import XMonad.Util.EZConfig
 import XMonad.Util.SpawnOnce
+import System.Exit
 
 main :: IO ()
 main = xmonad . ewmhFullscreen . ewmh $ myConfig
@@ -14,6 +15,7 @@ myConfig = def
     }
   `additionalKeysP`
     [ ("M-<Return>", spawn "emacsclient -c"                   )
+    , ("M-S-e"     , io exitSuccess                           )
     , ("M-S-r"     , spawn "xrandr --output Virtual-1 --auto" )
     ]
 
