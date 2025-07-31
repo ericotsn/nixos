@@ -2,6 +2,7 @@
 
 {
   imports = [
+    ../modules/emacs.nix
     ../modules/eza.nix
     ../modules/fzf.nix
   ];
@@ -20,8 +21,6 @@
 
   environment.systemPackages = with pkgs; [
     alacritty
-    emacs-lsp-booster
-    emacs-with-pkgs
     fd
     git
     hunspell # Spell checker
@@ -38,16 +37,11 @@
     vtsls # LSP wrapper for vscode's typescript extension
   ];
 
-  environment.sessionVariables = {
-    # https://emacs-lsp.github.io/lsp-mode/page/performance/#use-plists-for-deserialization
-    LSP_USE_PLISTS = "true";
-  };
+  environment.sessionVariables = { };
 
-  # When not using EXWM we can run Emacs as a systemd service.
-  services.emacs = {
-    enable = !(config.specialisation ? exwm);
-    package = pkgs.emacs-with-pkgs;
-    defaultEditor = true;
+  programs.emacs = {
+    enable = true;
+    package = pkgs.emacs-git;
   };
 
   programs.direnv.enable = true;
