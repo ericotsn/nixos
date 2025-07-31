@@ -394,6 +394,13 @@ considered a "package" unto itself.
     (add-hook 'prog-mode-hook (lambda ()
                                 (setq truncate-lines t)))
 
+    (unless (version< emacs-version "31")
+      (setq mode-line-collapse-minor-modes t)
+      (bind-key "<f9>" (lambda ()
+                         (interactive)
+                         (setq mode-line-collapse-minor-modes
+                               (not mode-line-collapse-minor-modes)))))
+
     ;; Enable some useful commands which are disabled by default.
     (dolist (cmd '(dired-find-alternate-file
                    downcase-region
