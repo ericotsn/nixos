@@ -10,12 +10,12 @@ let
 
   pragmatapro-mode = pkgs.emacsPackages.trivialBuild rec {
     pname = "pragmatapro-mode";
-    version = "fadcc2e5cff3d8e69d011b815efc7808533ec09b";
-    src = pkgs.fetchFromSourcehut {
-      owner = "~eotsn";
+    version = "b9ea8b7dc54a888755438b828bba6d0c9231b5fa";
+    src = pkgs.fetchFromGitHub {
+      owner = "ericotsn";
       repo = "pragmatapro-mode";
       rev = version;
-      sha256 = "sha256-V0oUAzs4uf0VAItk/MRMQIuEUFxedCEywwJ1O5z68C8=";
+      sha256 = "sha256-rw/3LODa84144JlsILpm2U38Fa3k21rux0TGP1S/2Ho=";
     };
   };
 

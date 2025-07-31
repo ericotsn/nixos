@@ -1,5 +1,5 @@
 NIXADDR ?= unset
-NIXUSER ?= eotsn
+NIXUSER ?= ericotsn
 NIXNAME ?= vm-aarch64
 NIXSPEC ?= xmonad
 
@@ -26,12 +26,12 @@ vm/bootstrap:
 		mkdir -p /mnt/boot; \
 		mount /dev/disk/by-label/EFI /mnt/boot -o fmask=0077,dmask=0077; \
 		sleep 1; \
-		nixos-install --flake sourcehut:~eotsn/nixos#$(NIXNAME) --no-root-passwd && reboot; \
+		nixos-install --flake github:ericotsn/nixos#$(NIXNAME) --no-root-passwd && reboot; \
 	"
 
 vm/init:
 	ssh $(SSH_OPTIONS) $(NIXUSER)@$(NIXADDR) "\
-		git clone https://git.sr.ht/~eotsn/nixos; \
+		git clone https://github.com/ericotsn/nixos; \
 		sleep 1; \
 		cd nixos/dotfiles && sh install; \
 	"

@@ -12,7 +12,7 @@
 
   programs.fish.enable = true;
 
-  users.users.eotsn = {
+  users.users.ericotsn = {
     isNormalUser = true;
     extraGroups = [ "docker" "wheel" ];
     shell = pkgs.fish;
@@ -55,6 +55,6 @@
     # Certain features, including CLI integration and system authentication
     # support, require enabling PolKit integration on some desktop environments
     # (e.g. Plasma).
-    polkitPolicyOwners = [ "eotsn" ];
+    polkitPolicyOwners = [ "ericotsn" ];
   };
 }
