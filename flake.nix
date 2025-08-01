@@ -17,6 +17,10 @@
     let
       overlays = [
         emacs-overlay.overlays.default
+
+        (final: prev: {
+          opencode = final.callPackage ./pkgs/opencode/opencode.nix {};
+        })
       ];
     in
     {
