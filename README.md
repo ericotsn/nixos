@@ -84,7 +84,7 @@ You can then access the VM using `local.nixos` instead of its IP address.
 
 ### Proxying `localhost`
 
-When running applications within the VM that interface with external services you can run into issues when using NAT networking. One I run into frequently is when an external service my team uses needs a callback URL. I could add my VM's IP to the list of callback URLs, but this is an inflexible solution. Instead we can use a tool like `socat` to proxy a specific port on `localhost` to my VM:
+When running applications within the VM that interface with external services you can run into issues when using NAT networking. One I run into frequently is when an external service needs a callback URL. I could add my VM's IP to the list of callback URLs, but this is an inflexible solution. Instead we can use a tool like `socat` to proxy a specific port on `localhost` to my VM:
 
 ```
 socat TCP-LISTEN:8080,reuseaddr,fork TCP:<IPADDR>:8080
@@ -102,4 +102,3 @@ In `chrome://inspect` enable the "Discover network targets" option and add the f
 - `<IPADDR>:9230`
 
 Alternatively, if you added an entry into `/etc/hosts` you could also use that instead, e.g. `local.nixos:9229`.
-
