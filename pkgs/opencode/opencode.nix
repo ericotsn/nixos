@@ -12,7 +12,7 @@
 
 let
   opencode-node-modules-hash = {
-    "aarch64-linux" = "sha256-Ybf8MiiCHHEMQGqc4PGPHvcfons+sLvhO4UkWQghJ34=";
+    "aarch64-linux" = "sha256-LOy/k8yeUEDe3FFDAgXGJ2BVIxMFy/Js0cgFbtThiDo=";
   };
   bun-target = {
     "aarch64-linux" = "bun-linux-arm64";
@@ -20,20 +20,24 @@ let
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "opencode";
-  version = "0.3.85";
+  version = "0.3.110";
   src = fetchFromGitHub {
     owner = "sst";
     repo = "opencode";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-7L50P3+u4SHQtjSdFJviPaeLFnOIGP/l4BFLHKm4pNs=";
+    hash = "sha256-2fvUSbQWBxjXLRfVFwJ6VNO2tx+qGa+IDRCSwFPqw+o=";
   };
 
   tui = buildGoModule {
     pname = "opencode-tui";
     inherit (finalAttrs) version;
-    src = "${finalAttrs.src}/packages/tui";
+    # Use the full repository so that we can resolve replace
+    # directives in `packages/tui/go.mod`.
+    src = finalAttrs.src;
 
-    vendorHash = "sha256-+j8+TjTzd7AH9Si9tS7noTpPcG1lz9j+tmxUTrPcThw=";
+    modRoot = "packages/tui";
+
+    vendorHash = "sha256-nBwYVaBau1iTnPY3d5F/5/ENyjMCikpQYNI5whEJwBk=";
 
     subPackages = [ "cmd/opencode" ];
 
