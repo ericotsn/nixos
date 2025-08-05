@@ -1,10 +1,21 @@
-#+title: My Emacs Configuration
+#+title: My Emacs configuration
 #+property: header-args :tangle yes :tangle-mode: #o444 :results silent
 #+startup: content indent
 
+This is my personal literate Emacs configuration.
+
+* Bootstrapping
+
 #+begin_src emacs-lisp
   ;;; init.el -*- lexical-binding: t; -*-
+#+end_src
 
+I run Emacs as a daemon and create new frames by connecting to the
+server with ~emacsclient~, so startup time is not a major concern.
+Nevertheless, it's occasionally interesting to know how long Emacs
+took to start, for curiosity's sake.
+
+#+begin_src emacs-lisp
   (eval-when-compile (require 'cl-lib))
   (let ((emacs-start-time (current-time)))
     (add-hook 'emacs-startup-hook
@@ -13,9 +24,7 @@
                   (message "[Emacs initialized in %.3fs]" elapsed)))))
 #+end_src
 
-* Bootstrapping
-
-** Startup
+** Startup (=early-init.el=)
 :PROPERTIES:
 :header-args: :tangle early-init.el :tangle-mode o444 :results silent
 :END:
@@ -24,186 +33,401 @@
   ;;; early-init.el -*- lexical-binding: t; -*-
 #+end_src
 
-*** Garbage collection
-
 Temporarily increase the garbage collection threshold to improve
-startup time. It's *very important* to reset =gc-cons-threshold= to
+startup time. This optimization saves me about 0.3s. It's *VERY
+IMPORTANT* to reset ~gc-cons-threshold~ after Emacs has loaded to
 ensure normal operation.
 
 #+begin_src emacs-lisp
-  (setq gc-cons-threshold most-positive-fixnum
-        gc-cons-percentage 0.5)
+  (setq gc-cons-threshold most-positive-fixnum)
+  (setq gc-cons-percentage 0.5)
 
   (add-hook 'emacs-startup-hook
             (lambda ()
-              (setq gc-cons-threshold (* 128 1024 1024) ;; 128 MB
-                    gc-cons-percentage 0.1)))
+              (setq gc-cons-threshold (* 128 1024 1024)) ; 128 MB
+              (setq gc-cons-percentage 0.1)))
 #+end_src
 
-*** UI
-
-Use =default-frame-alist= to enable, disable or set initial interface
-options. This is /slightly/ more efficient compared to using built-in
-commands to toggle these settings, as it reduced the amount of Elisp
-that needs to be evaluated during startup.
+Emacs uses a conservative default chunk size of 0.625 MB when reading
+data from subprocesses. Increasing it can help improve performance
+when processing large amounts of data (LSP servers, etc.).
 
 #+begin_src emacs-lisp
-  (push '(alpha-background . 95) default-frame-alist)
-  (push '(font . "PragmataPro Liga-15") default-frame-alist)
+  (setq read-process-output-max (* 4 1024 1024)) ; 4 MB
+  (setq process-adaptive-read-buffering nil)
+#+end_src
+
+The =early-init.el= file is loaded before the GUI is initialized. This
+makes it possible to disable UI elements, change settings, and
+configure fonts before the initial frame is rendered.
+
+#+begin_src emacs-lisp
   (push '(menu-bar-lines . 0) default-frame-alist)
   (push '(tool-bar-lines . 0) default-frame-alist)
   (push '(vertical-scroll-bars) default-frame-alist)
+  (push '(horizontal-scroll-bars) default-frame-alist)
+
+  (setq inhibit-startup-screen t)
+  (setq initial-buffer-choice t)
+
+  ;; Show the current file's full path in the title.
+  (setq frame-title-format
+        '(:eval (if buffer-file-name default-directory "%b")))
+
+  (set-face-attribute 'default nil :family "PragmataPro Liga" :height 150)
 #+end_src
 
-* Tree-sitter
+* Built-in packages
+** Dired
 
-With the latest changes from upstream Emacs (31.X), Tree-sitter
-support has continued to improve and now provides a good replacement
-for various 3rd party packages.
+#+begin_src emacs-lisp
+  (use-package dired
+    :bind (:map dired-mode-map
+           ("," . dired-up-directory))
+    :config
+    (setq dired-dwim-target t)
+    (setq dired-kill-when-opening-new-dired-buffer t)
+    (setq dired-listing-switches "-AGFhlv --group-directories-first")
+    (setq dired-vc-rename-file t))
+#+end_src
 
-** dockerfile-ts-mode
+** Ediff
+
+#+begin_src emacs-lisp
+  (use-package ediff
+    :config
+    (setq ediff-diff-options "-w")
+    (setq ediff-window-setup-function #'ediff-setup-windows-plain))
+#+end_src
+
+** Eglot
+
+#+begin_src emacs-lisp
+  (use-package eglot
+    :bind (("C-c C-l" . eglot)
+           :map eglot-mode-map
+           ("C-c C-." . eglot-code-actions)
+           ("C-c C-," . eglot-rename))
+    :config
+    (setq eglot-autoshutdown t)
+    (setq eglot-code-action-indicator "")
+    (setq eglot-extend-to-xref t)
+    (setq eldoc-echo-area-use-multiline-p nil))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package eglot-orderless
+    :no-require t
+    :after (eglot orderless)
+    :config
+    (add-to-list 'completion-category-overrides
+                 '(eglot (styles orderless basic))))
+#+end_src
+
+*** Resolving LSP code actions lazily
+
+A LSP client can announce to the server that it supports resolving the
+=edit= property of code actions lazily. This property would then need
+to be resolved with a =codeAction/resolve= request by the client.
+
+Currently (Emacs 31.1), Eglot will only resolve code actions if the
+=command= property is also missing. This behavior is not defined in
+the specification, and will cause issues with some servers.
+
+This custom implementation of ~eglot-execute~ resolves this issue.
+
+#+begin_src emacs-lisp
+  (cl-defgeneric my/eglot-execute (server action)
+    "Ask SERVER to execute ACTION.
+  ACTION is an LSP `CodeAction', `Command' or `ExecuteCommandParams'
+  object."
+    (:method
+     (server action) "Default implementation."
+     (eglot--dcase action
+       (((Command))
+        ;; Convert to ExecuteCommandParams and recurse (bug#71642)
+        (cl-remf action :title)
+        (eglot-execute server action))
+       (((ExecuteCommandParams))
+        (eglot--request server :workspace/executeCommand action))
+       (((CodeAction) edit command data)
+        (if (and (null edit) data
+                 (eglot-server-capable :codeActionProvider :resolveProvider))
+            (eglot-execute server (eglot--request server :codeAction/resolve action))
+          (when edit (eglot--apply-workspace-edit edit this-command))
+          (when command
+            ;; Recursive call with what must be a Command object (bug#71642)
+            (eglot-execute server command)))))))
+
+  ;; Override the built-in function with our custom version.
+  (advice-add 'eglot-execute :override #'my/eglot-execute)
+#+end_src
+
+The =documentChanges= property is optional and may be omitted by the
+server in a response. Some servers, however, will include it with an
+empty (array) value instead.
+
+I'm not sure if this is compliant with the specification, but
+nevertheless we need to update ~eglot--apply-workspace-edit~ to deal
+with this edge case.
+
+#+begin_src emacs-lisp
+  (defun my/eglot--apply-workspace-edit (wedit origin)
+    "Apply (or offer to apply) the workspace edit WEDIT.
+  ORIGIN is a symbol designating the command that originated this
+  edit proposed by the server."
+    (eglot--dbind ((WorkspaceEdit) changes documentChanges) wedit
+      (let ((prepared
+             (cl-remove-if
+              (lambda (x) (cl-every #'null x))
+              (mapcar (eglot--lambda ((TextDocumentEdit) textDocument edits)
+                        (eglot--dbind ((VersionedTextDocumentIdentifier) uri version)
+                            textDocument
+                          (list (eglot-uri-to-path uri) edits version)))
+                      documentChanges))))
+        (unless (and changes documentChanges)
+          ;; We don't want double edits, and some servers send both
+          ;; changes and documentChanges.  This unless ensures that we
+          ;; prefer documentChanges over changes.
+          (cl-loop for (uri edits) on changes by #'cddr
+                   do (push (list (eglot-uri-to-path uri) edits) prepared)))
+        (cl-flet ((notevery-visited-p ()
+                    (cl-notevery #'find-buffer-visiting
+                                 (mapcar #'car prepared)))
+                  (accept-p ()
+                    (y-or-n-p
+                     (format "[eglot] Server wants to edit:\n%sProceed? "
+                             (cl-loop
+                              for (f eds _) in prepared
+                              concat (format
+                                      "  %s (%d change%s)\n"
+                                      f (length eds)
+                                      (if (> (length eds) 1) "s" ""))))))
+                  (apply ()
+                    (cl-loop for edit in prepared
+                     for (path edits version) = edit
+                     do (with-current-buffer (find-file-noselect path)
+                          (eglot--apply-text-edits edits version))
+                     finally (eldoc) (eglot--message "Edit successful!"))))
+          (let ((decision (eglot--confirm-server-edits origin prepared)))
+            (cond
+             ((or (eq decision 'diff)
+                  (and (eq decision 'maybe-diff) (notevery-visited-p)))
+              (eglot--propose-changes-as-diff prepared))
+             ((or (memq decision '(t summary))
+                  (and (eq decision 'maybe-summary) (notevery-visited-p)))
+              (when (accept-p) (apply)))
+             (t
+              (apply))))))))
+
+  ;; Override the built-in function with out custom version.
+  (advice-add 'eglot--apply-workspace-edit :override #'my/eglot--apply-workspace-edit)
+#+end_src
+
+** Emacs
+
+#+begin_src emacs-lisp
+  (use-package emacs
+    :demand t
+    :bind (("<f6>" . whitespace-mode)
+           ("<f7>" . display-line-numbers-mode)
+           ("<f8>" . hl-line-mode)
+           ("C-<" . hs-hide-block)
+           ("C->" . hs-show-block)
+           ("C-x C-d" . duplicate-line)
+           ("C-c z" . delete-trailing-whitespace))
+    :config
+    (setq tab-width 4)
+
+    ;; Highlight trailing whitespace for programming modes.
+    (add-hook 'prog-mode-hook (lambda () (setq show-trailing-whitespace t)))
+
+    ;; Don't wrap lines while programming (toggle with C-x x t).
+    (add-hook 'prog-mode-hook (lambda () (setq truncate-lines t)))
+
+    ;;; autorevert.el
+    (global-auto-revert-mode 1)
+    (setq auto-revert-interval 0.1)
+
+    ;;; bindings.el
+    (when (version<= "31" emacs-version)
+      (setq mode-line-collapse-minor-modes t))
+
+    ;;; cus-edit.el
+    (setq custom-file (make-temp-file "emacs-custom-"))
+
+    ;;; delsel.el
+    (delete-selection-mode 1)
+
+    ;;; files.el
+    (setq backup-directory-alist
+          `((".*" . ,(expand-file-name
+                      (concat user-emacs-directory "backups")))))
+    (setq delete-old-versions t)
+    (setq require-final-newline t)
+    (setq version-control t)
+
+    ;;; novice.el
+    (setq disabled-command-function nil)
+
+    ;;; recentf.el
+    (recentf-mode 1)
+
+    ;;; savehist.el
+    (savehist-mode 1)
+
+    ;;; simple.el
+    (column-number-mode 1)
+    (indent-tabs-mode nil)
+
+    ;; Hide commands in M-x which do not work in the current mode.
+    (setq read-extended-command-predicate #'command-completion-default-include-p)
+
+    ;;; which-key.el
+    (which-key-mode 1))
+#+end_src
+
+** Flymake
+
+#+begin_src emacs-lisp
+  (use-package flymake
+    :bind (:map flymake-mode-map
+           ("M-n" . flymake-goto-next-error)
+           ("M-p" . flymake-goto-prev-error))
+    :config
+    (setq flymake-show-diagnostics-at-end-of-line t))
+#+end_src
+
+** Tree-sitter
 
 #+begin_src emacs-lisp
   (use-package dockerfile-ts-mode
-    :mode (("\\Dockerfile\\'" . dockerfile-ts-mode)
-           ("\\.dockerignore\\'" . dockerfile-ts-mode)))
-#+end_src
+    :mode ("\\Dockerfile\\'" "\\.dockerignore\\'"))
 
-** elixir-ts-mode
-
-#+begin_src emacs-lisp
   (use-package elixir-ts-mode
-    :mode (("\\.ex\\'" . elixir-ts-mode)
-           ("\\.exs\\'" . elixir-ts-mode)
-           ("\\mix.lock\\'" . elixir-ts-mode)))
-#+end_src
+    :mode ("\\.ex[s]?\\'" "\\mix.lock\\'"))
 
-** json-ts-mode
-
-#+begin_src emacs-lisp
   (use-package json-ts-mode
     :mode ("\\.json\\'"))
-#+end_src
 
-** toml-ts-mode
-
-#+begin_src emacs-lisp
   (use-package toml-ts-mode
     :mode ("\\.toml\\'"))
-#+end_src
 
-** tsx-ts-mode
-
-#+begin_src emacs-lisp
   (use-package tsx-ts-mode
-    :mode ("\\.jsx\\'" "\\.tsx\\'"))
-#+end_src
+    :mode ("\\.[jt]sx\\'"))
 
-** typescript-ts-mode
+  (use-package js-ts-mode
+    :mode ("\\.[cm]?js\\'"))
 
-#+begin_src emacs-lisp
   (use-package typescript-ts-mode
-    :mode ("\\.js\\'" "\\.ts\\'" "\\.cjs\\'" "\\.mjs\\'" "\\.mts\\'"))
-#+end_src
+    :mode ("\\.[cm]?ts\\'"))
 
-** yaml-ts-mode
-
-#+begin_src emacs-lisp
   (use-package yaml-ts-mode
     :mode ("\\.ya?ml\\'"))
 #+end_src
 
-* Packages
-
-This is a curated list of packages which I've assembled using Emacs
-for professional software development. Generally I only add a new
-package if there's no easy way to achieve the same functionality using
-built-in functions, and I tend to use default settings and only
-customize when I need to.
-
+* Third-party packages
 ** avy
 
 #+begin_src emacs-lisp
   (use-package avy
-    :bind (("C-;" . avy-goto-char-2)
+    :bind (("C-'" . avy-goto-word-1)
            :map isearch-mode-map
-           ("C-;" . avy-isearch))
+           ("C-'" . avy-isearch))
     :config
-    (avy-setup-default))
+    (setq avy-single-candidate-jump nil)
+
+    (defun avy-action-embark (pt)
+      (unwind-protect
+          (save-excursion
+            (goto-char pt)
+            (embark-act))
+        (select-window
+         (cdr (ring-ref avy-ring 0))))
+      t)
+
+    (setf (alist-get ?. avy-dispatch-alist) #'avy-action-embark))
 #+end_src
 
 ** cape
 
 #+begin_src emacs-lisp
   (use-package cape
-    :bind ("C-c ." . cape-prefix-map)
+    :after (corfu orderless)
+    :bind ("C-c p" . cape-prefix-map)
     :init
-    ;; The order of the functions matters, as the first function
-    ;; returning a result wins.  Note that the list of buffer-local
-    ;; completion functions takes precedence over the global list.
-    (add-hook 'completion-at-point-functions #'cape-dabbrev)
-    (add-hook 'completion-at-point-functions #'cape-file)
-    (add-hook 'completion-at-point-functions #'cape-abbrev))
+    (add-hook 'completion-at-point-functions #'cape-file 85))
 #+end_src
 
 ** consult
 
 #+begin_src emacs-lisp
   (use-package consult
-    :bind (("C-c h" . consult-history)
-           ("C-c i" . consult-info)
-           ("C-x b" . consult-buffer) ;; orig. `switch-to-buffer'
-           ("C-x 4 b" . consult-buffer-other-window) ;; orig. `switch-to-buffer-other-window'
-           ("C-x p b" . consult-project-buffer) ;; orig. `project-switch-to-buffer'
-           ("M-g o" . consult-outline)
-           ("M-g i" . consult-imenu)
-           ("M-g f" . consult-flymake)
+    :bind (("C-x b" . consult-buffer)
+           ("C-x 4 b" . consult-buffer-other-window)
+           ("C-x p b" . consult-project-buffer)
+           ("C-x C-r" . consult-recent-file)
+           ("C-c C-j" . consult-outline)
            ("M-s g" . consult-ripgrep)
-           ("M-s l" . consult-line))
+           ("M-y" . consult-yank-pop)
+           :map minibuffer-local-map
+           ("M-r" . consult-history))
     :config
     ;; Use Consult to select xref locations with preview.
-    (setq xref-show-xrefs-function #'consult-xref
-          xref-show-definitions-function #'consult-xref))
+    (setq xref-show-xrefs-function #'consult-xref)
+    (setq xref-show-definitions-function #'consult-xref))
+#+end_src
+
+#+begin_src emacs-lisp
+  (use-package consult-eshell
+    :no-require t
+    :after (eshell consult)
+    :bind (:map eshell-hist-mode-map
+           ("M-r" . consult-history)))
 #+end_src
 
 ** corfu
 
 #+begin_src emacs-lisp
   (use-package corfu
-    :custom
-    (corfu-auto t)
-    (corfu-auto-delay 0.25)
-    (corfu-auto-prefix 3) ;; allocate 2 characters for snippets
-    (corfu-cycle t)
-    (corfu-quit-no-match 'separator)
-    (completion-ignore-case t)
-    (tab-always-indent 'complete)
+    :hook ((prog-mode . corfu-mode)
+           (eshell-mode . my/corfu-eshell))
     :config
-    (bind-key "C-SPC" #'corfu-insert-separator corfu-map)
-    (add-hook 'eshell-mode-hook (lambda ()
-                                  (setq-local corfu-auto nil)))
+    (setq completion-ignore-case t)
+    (setq tab-always-indent 'complete)
+
+    (setq corfu-auto t)
+    (setq corfu-auto-delay 0.1)
+    (setq corfu-auto-prefix 3)
+    (setq corfu-cycle t)
+    (setq corfu-preselect 'prompt)
+    (setq corfu-quit-no-match 'separator)
+
+    (defun my/corfu-eshell ()
+      (setq-local corfu-auto nil)
+      (setq-local corfu-quit-no-match t)
+      (corfu-mode 1))
+
     ;; Free the RET key for less intrusive behavior.
-    (keymap-unset corfu-map "RET")
-    (global-corfu-mode 1))
+    (keymap-unset corfu-map "RET"))
 #+end_src
 
 #+begin_src emacs-lisp
   (use-package corfu-popupinfo
+    :after corfu
     :hook (corfu-mode . corfu-popupinfo-mode)
-    :custom
-    (corfu-popupinfo-delay '(nil . 0.2)) ;; hide the popup initially
-    (corfu-popupinfo-max-height 20))
+    :config
+    (setq corfu-popupinfo-delay '(nil . 0.2))
+    (setq corfu-popupinfo-max-height 20))
 #+end_src
 
-** dired
-
 #+begin_src emacs-lisp
-  (use-package dired
-    :custom
-    (dired-dwim-target t)
-    (dired-kill-when-opening-new-dired-buffer t)
-    (dired-listing-switches "-alh")
-    (dired-vc-rename-file t))
+  (use-package corfu-quick
+    :after corfu
+    :bind (:map corfu-map
+           ("'" . corfu-quick-complete))
+    :config
+    (setq corfu-quick1 "asdfghjkl;"))
 #+end_src
 
 ** eat
@@ -213,215 +437,17 @@ customize when I need to.
     :hook (eshell-mode . eat-eshell-mode))
 #+end_src
 
-** ediff
-
-#+begin_src emacs-lisp
-  (use-package ediff
-    :custom
-    (ediff-diff-options "-w")
-    (ediff-window-setup-function #'ediff-setup-windows-plain))
-#+end_src
-
-** eglot
-
-#+begin_src emacs-lisp
-  (use-package eglot
-    :bind (("C-c C-l" . eglot)
-           :map eglot-mode-map
-           ("C-c C-." . eglot-code-actions)
-           ("C-c C-," . eglot-rename))
-    :custom
-    (eglot-auto-shutdown t)
-    (eglot-code-action-indicator "")
-    (eglot-extend-to-xref t)
-    (eldoc-echo-area-use-multiline-p nil)
-    :config
-    (setq read-process-output-max (* 1024 1024)) ;; 1 MB
-    (add-to-list 'completion-category-overrides
-                 '(eglot (styles orderless basic))))
-#+end_src
-
-*** eglot-overrides
-
-#+begin_src emacs-lisp
-  (use-package eglot-overrides
-    :no-require
-    :preface
-    (cl-defgeneric my/eglot-execute (server action)
-      (:method
-       (server action) "Default implementation."
-       (eglot--dcase action
-         (((Command))
-          ;; Convert to ExecuteCommandParams and recurse (bug#71642)
-          (cl-remf action :title)
-          (eglot-execute server action))
-         (((ExecuteCommandParams))
-          (eglot--request server :workspace/executeCommand action))
-         (((CodeAction) edit command data)
-          ;; [HACK] In the original implementation, command must be nil in
-          ;; order to trigger a codeAction/resolve request.  This is not
-          ;; compliant with the specification, assuming the client
-          ;; supports resolving the edit property lazily, so I've
-          ;; removed the condition.
-          (if (and (null edit) data
-                   (eglot-server-capable :codeActionProvider :resolveProvider))
-              (eglot-execute server (eglot--request server :codeAction/resolve action))
-            (when edit (eglot--apply-workspace-edit edit this-command))
-            (when command
-              ;; Recursive call with what must be a Command object (bug#71642)
-              (eglot-execute server command)))))))
-
-    (defun my/eglot--apply-workspace-edit (wedit origin)
-      (eglot--dbind ((WorkspaceEdit) changes documentChanges) wedit
-        (let ((prepared
-               (cl-remove-if
-                ;; [HACK] Some servers can send documentChanges that don't
-                ;; define any edits.  We drop these since I don't know
-                ;; how to deal with them.
-                (lambda (x) (cl-every #'null x))
-                (mapcar
-                 (eglot--lambda ((TextDocumentEdit) textDocument edits)
-                   (eglot--dbind ((VersionedTextDocumentIdentifier) uri version)
-                       textDocument
-                     (list (eglot-uri-to-path uri) edits version)))
-                 documentChanges))))
-          (unless (and changes documentChanges)
-            ;; We don't want double edits, and some servers send both
-            ;; changes and documentChanges.  This unless ensures that we
-            ;; prefer documentChanges over changes.
-            (cl-loop for (uri edits) on changes by #'cddr
-                     do (push (list (eglot-uri-to-path uri) edits) prepared)))
-          (cl-flet ((notevery-visited-p ()
-                      (cl-notevery #'find-buffer-visiting
-                                   (mapcar #'car prepared)))
-                    (accept-p ()
-                      (y-or-n-p
-                       (format "[eglot] Server wants to edit:\n%sProceed? "
-                               (cl-loop
-                                for (f eds _) in prepared
-                                concat (format
-                                        "  %s (%d change%s)\n"
-                                        f (length eds)
-                                        (if (> (length eds) 1) "s" ""))))))
-                    (apply ()
-                      (cl-loop for edit in prepared
-                               for (path edits version) = edit
-                               do (with-current-buffer (find-file-noselect path)
-                                    (eglot--apply-text-edits edits version))
-                               finally (eldoc) (eglot--message "Edit successful!"))))
-            (let ((decision (eglot--confirm-server-edits origin prepared)))
-              (cond
-               ((or (eq decision 'diff)
-                    (and (eq decision 'maybe-diff) (notevery-visited-p)))
-                (eglot--propose-changes-as-diff prepared))
-               ((or (memq decision '(t summary))
-                    (and (eq decision 'maybe-summary) (notevery-visited-p)))
-                (when (accept-p) (apply)))
-               (t
-                (apply))))))))
-    :config
-    (advice-add 'eglot-execute :override #'my/eglot-execute)
-    (advice-add 'eglot--apply-workspace-edit :override #'my/eglot--apply-workspace-edit))
-#+end_src
-
-** emacs
-
-This pseudo-package represents Emacs itself, and configures many
-variables and advices that relate to core functionality that isn't
-considered a "package" unto itself.
-
-#+begin_src emacs-lisp
-  (use-package emacs
-    :demand t
-    :bind* (("<f6>" . whitespace-mode)
-            ("<f7>" . display-line-numbers-mode)
-            ("<f8>" . hl-line-mode)
-            ("C-<" . hs-hide-block)
-            ("C->" . hs-show-block)
-            ("C-x C-d" . duplicate-line) ;; orig. `list-directory'
-            ("C-c z" . delete-trailing-whitespace))
-    :custom
-    ;; Open the *scratch* buffer when Emacs starts.
-    (inhibit-startup-screen t)
-    (initial-buffer-choice t)
-
-    ;; Show column numbers in the mode line.
-    (column-number-mode 1)
-
-    ;; Disable line numbers in all buffers.
-    (global-display-line-numbers-mode nil)
-    ;; (display-line-numbers-type 'relative)
-
-    ;; Show the current file's full path in the title.
-    (frame-title-format
-     '(:eval (if buffer-file-name default-directory "%b")))
-
-    ;; Write customizations to a temporary file.
-    (custom-file (make-temp-file "emacs-custom-"))
-
-    ;; Replace active selection when typing.
-    (delete-selection-mode 1)
-
-    ;; Automatically detect and reload files when they change on disk.
-    (auto-revert-verbose t)
-    (global-auto-revert-mode 1)
-
-    ;; Hide commands in M-x which do not work in the current mode.
-    (read-extended-command-predicate #'command-completion-default-include-p)
-
-    ;; Save minibuffer history.
-    (savehist-mode 1)
-
-    ;; Enable numbered backup files and store them in a central
-    ;; location.
-    (version-control t)
-    (delete-old-versions t)
-    (backup-directory-alist `(("." . ,(expand-file-name
-                                       (concat user-emacs-directory "backups")))))
-
-    ;; Use SPC instead of TAB for indentation.
-    (indent-tabs-mode nil)
-
-    ;; The default behavior in Emacs is that TAB just indents the
-    ;; current line.  We want TAB to both indent and complete the thing
-    ;; at point.
-    (tab-always-indent 'complete)
-    (tab-width 2)
-
-    ;; Display the key bindings for incomplete commands in a popup.
-    (which-key-mode 1)
-
-    :config
-    ;; Highlight trailing whitespace for programming modes.
-    (add-hook 'prog-mode-hook (lambda ()
-                                (setq show-trailing-whitespace t)))
-
-    ;; Don't wrap lines while programming.
-    (add-hook 'prog-mode-hook (lambda ()
-                                (setq truncate-lines t)))
-
-    (unless (version< emacs-version "31")
-      (setq mode-line-collapse-minor-modes t)
-      (bind-key "<f9>" (lambda ()
-                         (interactive)
-                         (setq mode-line-collapse-minor-modes
-                               (not mode-line-collapse-minor-modes)))))
-
-    ;; Enable some useful commands which are disabled by default.
-    (dolist (cmd '(dired-find-alternate-file
-                   downcase-region
-                   narrow-to-region
-                   upcase-region))
-      (put cmd 'disabled nil)))
-#+end_src
-
 ** embark
 
 #+begin_src emacs-lisp
   (use-package embark
+    :demand t
     :bind (("C-." . embark-act)
-           ("M-." . embark-dwim) ;; orig. `xref-find-definitions'
-           ([remap describe-bindings] . embark-bindings))
+           ("M-." . embark-dwim)
+           ("C-h b" . embark-bindings)
+           :map minibuffer-local-map
+           ("C-c C-c" . embark-collect)
+           ("C-c C-e" . embark-export))
     :config
     (setq prefix-help-command #'embark-prefix-help-command)
 
@@ -435,13 +461,13 @@ considered a "package" unto itself.
       :doc "Commands to act on the current file or buffer."
       :parent embark-general-map)
 
-    (add-to-list 'embark-keymap-alist '(this-buffer-file . embark-this-buffer-file-map)))
+    (add-to-list 'embark-keymap-alist
+                 '(this-buffer-file . embark-this-buffer-file-map)))
 #+end_src
 
-** embark-consult
-
 #+begin_src emacs-lisp
-  (use-package embark-consult)
+  (use-package embark-consult
+    :after (embark consult))
 #+end_src
 
 ** envrc
@@ -455,19 +481,7 @@ considered a "package" unto itself.
 
 #+begin_src emacs-lisp
   (use-package expand-region
-    :bind* ("C-," . er/expand-region))
-#+end_src
-
-** flymake
-
-#+begin_src emacs-lisp
-  (use-package flymake
-    :custom
-    (flymake-show-diagnostics-at-end-of-line t)
-    :config
-    (bind-keys :map flymake-mode-map
-               ("M-n" . flymake-goto-next-error)
-               ("M-p" . flymake-goto-prev-error)))
+    :bind ("C-," . er/expand-region))
 #+end_src
 
 ** forge
@@ -482,38 +496,30 @@ considered a "package" unto itself.
 
 ** gptel
 
-There's many dangers and pitfalls with AI-driven development, but for
-the wary developer there's a lot of benefit of code generation in
-certain areas. What makes AI even more powerful is tool integration,
-especially if your text editor is included in that list - which is the
-case with =gptel=.
-
 #+begin_src emacs-lisp
   (use-package gptel
-    :commands (gptel gptel-send gptel-rewrite)
-    :bind (("<C-return>" . other-window)
-           ("C-c <return>" . gptel-send)
-           ("C-c C-SPC" . gptel-menu)
-           ("C-c C-g" . gptel-abort)
+    :bind (("C-c <return>" . gptel-send)
+           ("C-c j" . gptel-menu)
            ("C-c r" . gptel-rewrite)
+           ("C-c C-g" . gptel-abort)
            :map embark-region-map
            ("+" . gptel-add)
            :map embark-this-buffer-file-map
            ("+" . gptel-add))
     :hook (gptel-mode . visual-line-mode)
-    :custom
-    (gptel-default-mode 'org-mode)
     :config
-    (add-hook 'gptel-mode-hook (lambda ()
-                                 (display-line-numbers-mode -1)))
+    (setq gptel-default-mode 'org-mode)
+
+    (setf (alist-get 'org-mode gptel-prompt-prefix-alist) "*Prompt*: ")
+    (setf (alist-get 'org-mode gptel-response-prefix-alist) "*Response*:\n")
 
     (require 'gptel-gh)
 
     (defvar gptel--copilot
       (gptel-make-gh-copilot "Copilot"))
 
-    (setq-default gptel-model 'claude-3.7-sonnet
-                  gptel-backend gptel--copilot))
+    (setq-default gptel-model 'claude-sonnet-4)
+    (setq-default gptel-backend gptel--copilot))
 #+end_src
 
 ** helpful
@@ -541,15 +547,16 @@ case with =gptel=.
 
 #+begin_src emacs-lisp
   (use-package magit
-    :bind ("C-x g" . magit-status)
-    :hook (magit-mode . hl-line-mode)
-    :custom
-    (magit-diff-refine-hunk 'all)
     :config
+    (setq magit-define-global-key-bindings 'recommended)
+    (setq magit-diff-refine-hunk 'all)
+
     (transient-bind-q-to-quit)
+
     (defun my/magit-disable-whitespace-mode ()
       "Disable `whitespace-mode' in Magit buffers."
       (whitespace-mode -1))
+
     (add-hook 'magit-section-mode-hook #'my/magit-disable-whitespace-mode))
 #+end_src
 
@@ -557,8 +564,7 @@ case with =gptel=.
 
 #+begin_src emacs-lisp
   (use-package marginalia
-    :config
-    (marginalia-mode 1))
+    :hook (after-init . marginalia-mode))
 #+end_src
 
 ** markdown-mode
@@ -573,21 +579,13 @@ case with =gptel=.
 
 #+begin_src emacs-lisp
   (use-package modus-themes
-    :custom
-    (modus-themes-italic-constructs t)
-    (modus-themes-prompts '(bold))
-    (modus-themes-headings '((t . (regular 1.15))))
-    (modus-themes-to-toggle '(modus-operandi modus-vivendi))
+    :demand t
+    :bind ("<f5>" . modus-themes-toggle)
     :config
-    (defun my/modus-themes-custom-faces (&rest _)
-      (modus-themes-with-colors
-        (setq lsp-ui-doc-border border)
-        (custom-set-faces
-         `(flymake-end-of-line-diagnostics-face ((,c :box nil)))
-         `(flymake-error-echo-at-eol ((,c :foreground ,red-cooler :background ,bg-red-nuanced)))
-         `(flymake-note-echo-at-eol ((,c :foreground ,cyan-cooler :background ,bg-cyan-nuanced )))
-         `(flymake-warning-echo-at-eol ((,c :foreground ,yellow-cooler :background ,bg-yellow-nuanced))))))
-    (add-hook 'modus-themes-post-load-hook #'my/modus-themes-custom-faces)
+    (setq modus-themes-italic-constructs t)
+    (setq modus-themes-prompts '(bold))
+    (setq modus-themes-headings '((t . (regular 1.15))))
+    (setq modus-themes-to-toggle '(modus-operandi modus-vivendi))
 
     (setq modus-themes-common-palette-overrides
           `((bg-mode-line-active bg-inactive)
@@ -605,29 +603,43 @@ case with =gptel=.
             (bg-line-number-active unspecified)
             (bg-line-number-inactive unspecified)))
 
-    (modus-themes-load-theme 'modus-vivendi)
-
-    (bind-key "<f5>" #'modus-themes-toggle))
+    (modus-themes-load-theme (cadr modus-themes-to-toggle)))
 #+end_src
 
-** move-text
+#+begin_src emacs-lisp
+  (use-package modus-themes-flymake
+    :no-require t
+    :after modus-themes
+    :config
+    (defun my/modus-themes-flymake-faces (&rest _)
+      (modus-themes-with-colors
+        (custom-set-faces
+         `(flymake-end-of-line-diagnostics-face ((,c :box nil)))
+         `(flymake-error-echo-at-eol ((,c :foreground ,red-cooler :background ,bg-red-nuanced)))
+         `(flymake-note-echo-at-eol ((,c :foreground ,cyan-cooler :background ,bg-cyan-nuanced )))
+         `(flymake-warning-echo-at-eol ((,c :foreground ,yellow-cooler :background ,bg-yellow-nuanced))))))
+
+    (add-hook 'modus-themes-post-load-hook #'my/modus-themes-flymake-faces))
+#+end_src
+
+** mode-text
 
 #+begin_src emacs-lisp
   (use-package move-text
-    :bind (("C-M-n" . move-text-down) ;; orig. `forward-list'
-           ("C-M-p" . move-text-up)) ;; orig. `backward-list'
-    :preface
+    :bind (("C-M-n" . move-text-down)
+           ("C-M-p" . move-text-up))
+    :config
+    (move-text-default-bindings)
+
     (defun indent-region-advice (&rest ignored)
       (let ((deactivate deactivate-mark))
         (if (region-active-p)
             (indent-region (region-beginning) (region-end))
           (indent-region (line-beginning-position) (line-end-position)))
         (setq deactivate-mark deactivate)))
-    :config
-    (move-text-default-bindings)
 
-    (advice-add #'move-text-up :after 'indent-region-advice)
-    (advice-add #'move-text-down :after 'indent-region-advice))
+    (advice-add 'move-text-up :after #'indent-region-advice)
+    (advice-add 'move-text-down :after #'indent-region-advice))
 #+end_src
 
 ** nix-mode
@@ -635,47 +647,47 @@ case with =gptel=.
 #+begin_src emacs-lisp
   (use-package nix-mode
     :mode "\\.nix\\'"
-    :custom
-    (nix-indent-function 'nix-indent-line))
+    :config
+    (setq nix-indent-function 'nix-indent-line))
 #+end_src
 
 ** orderless
 
 #+begin_src emacs-lisp
   (use-package orderless
-    :custom
-    (completion-styles '(orderless basic))
-    (completion-category-overrides '((file (styles basic partial-completion)))))
+    :config
+    (setq completion-styles '(orderless basic))
+    (setq completion-category-overrides '((file (styles basic partial-completion)))))
 #+end_src
 
 ** org
 
 #+begin_src emacs-lisp
   (use-package org
-    :custom
-    (org-M-RET-may-split-line '((default . nil)))
-    (org-insert-heading-respect-content t)
-    (org-log-done 'time)
-    (org-log-into-drawer t)
+    :config
+    (setq org-M-RET-may-split-line '((default . nil)))
+    (setq org-insert-heading-respect-content t)
+    (setq org-log-done 'time)
+    (setq org-log-into-drawer t)
 
-    (org-directory "~/org")
-    (org-agenda-files (list org-directory))
+    (setq org-directory "~/org" org-agenda-files (list org-directory))
 
-    (org-todo-keywords
-     '((sequence "TODO(t)" "WAIT(w!)" "|" "CANCEL(c!)" "DONE(d!)"))))
+    (setq org-todo-keywords
+          '((sequence"TODO(t)" "WAIT(w!)" "|" "CANCEL(c!)" "DONE(d!)")))
+
+    (keymap-unset org-mode-map "C-'")
+    (keymap-unset org-mode-map "C-,")
+    (keymap-unset org-mode-map "C-c C-j"))
 #+end_src
 
 ** perspective
 
 #+begin_src emacs-lisp
   (use-package perspective
-    :custom
-    (persp-mode-prefix-key (kbd "C-z"))
     :init
+    (setq persp-mode-prefix-key (kbd "C-z"))
     (persp-mode 1))
 #+end_src
-
-Configure =consult= to only list buffers in the current perspective.
 
 #+begin_src emacs-lisp
   (use-package perspective-consult
@@ -691,51 +703,49 @@ Configure =consult= to only list buffers in the current perspective.
 #+begin_src emacs-lisp
   (use-package pragmatapro-mode
     :hook (prog-mode . pragmatapro-mode)
-    :custom
-    (pragmatapro-enable-ligatures-in-comments t))
+    :config
+    (setq pragmatapro-enable-ligatures-in-comments t))
 #+end_src
 
 ** vertico
 
 #+begin_src emacs-lisp
   (use-package vertico
-    :custom
-    (vertico-cycle t)
+    :bind (:map vertico-map
+           ("C-M-n" . vertico-next-group)
+           ("C-M-p" . vertico-previous-group))
+    :hook (after-init . vertico-mode)
     :config
-    (bind-keys :map vertico-map
-               ("C-M-n" . vertico-next-group)
-               ("C-M-p" . vertico-previous-group))
-    (vertico-mode 1))
+    (setq vertico-cycle t))
 #+end_src
 
 #+begin_src emacs-lisp
   (use-package vertico-multiform
     :after vertico
-    :custom
-    (vertico-multiform-commands
-     '((consult-ripgrep buffer)
-       (consult-xref buffer)
-       (embark-bindings buffer)))
+    :hook (after-init . vertico-multiform-mode)
     :config
-    (vertico-multiform-mode 1))
+    (setq vertico-multiform-commands
+          '((consult-ripgrep buffer)
+            (consult-xref buffer)
+            (embark-bindings buffer))))
 #+end_src
 
 ** wgrep
 
 #+begin_src emacs-lisp
   (use-package wgrep
-    :custom
-    (wgrep-auto-save-buffer t))
+    :config
+    (setq wgrep-auto-save-buffer t))
 #+end_src
 
 ** yasnippet
 
 #+begin_src emacs-lisp
   (use-package yasnippet
-    :hook (prog-mode . yas-minor-mode-on)
-    :custom
-    (yas-triggers-in-field t)
-    (yas-wrap-around-region t)
+    :hook (prog-mode . yas-minor-mode)
     :config
+    (setq yas-triggers-in-field t)
+    (setq yas-wrap-around-region t)
+
     (yas-reload-all))
 #+end_src
