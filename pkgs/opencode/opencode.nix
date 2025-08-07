@@ -5,14 +5,13 @@
   bun,
   fetchFromGitHub,
   models-dev,
-  nix-update-script,
-  testers,
+  tree-sitter,
   writableTmpDirAsHomeHook,
 }:
 
 let
   opencode-node-modules-hash = {
-    "aarch64-linux" = "sha256-LOy/k8yeUEDe3FFDAgXGJ2BVIxMFy/Js0cgFbtThiDo=";
+    "aarch64-linux" = "sha256-iQIqv6r6uo9zj8kiQDJuPyFdySNHIj+F4C286K6icv0=";
   };
   bun-target = {
     "aarch64-linux" = "bun-linux-arm64";
@@ -20,24 +19,21 @@ let
 in
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "opencode";
-  version = "0.3.110";
+  version = "0.3.133";
   src = fetchFromGitHub {
     owner = "sst";
     repo = "opencode";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-2fvUSbQWBxjXLRfVFwJ6VNO2tx+qGa+IDRCSwFPqw+o=";
+    hash = "sha256-OkkjbytvvUBOcSCjf3zd8NWLaM+I1tUR9IxcRZrdVeM=";
   };
 
   tui = buildGoModule {
     pname = "opencode-tui";
-    inherit (finalAttrs) version;
-    # Use the full repository so that we can resolve replace
-    # directives in `packages/tui/go.mod`.
-    src = finalAttrs.src;
+    inherit (finalAttrs) version src;
 
     modRoot = "packages/tui";
 
-    vendorHash = "sha256-nBwYVaBau1iTnPY3d5F/5/ENyjMCikpQYNI5whEJwBk=";
+    vendorHash = "sha256-uHb7fAiZ8XNGq9YZ6drNYU1SoKrWMgXpTfudOMvmcHU=";
 
     subPackages = [ "cmd/opencode" ];
 
@@ -104,6 +100,8 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
   };
+
+  buildInputs = [ tree-sitter ];
 
   nativeBuildInputs = [
     bun
