@@ -1,0 +1,128 @@
+#+title: NixOS system configuration
+#+startup: content indent
+
+This repository contains my personal NixOS system configuration, along
+with dotfiles and some workflow tips for using a virtual machine (VM)
+as your primary development environment.
+
+My setup is heavily inspired by Mitchell Hashimoto. You can find his
+configuration files on [[https://github.com/mitchellh/nixos-config][GitHub]].
+
+* Bootstrapping
+
+The following instructions will guide you through the process of
+configuring a new NixOS installation on macOS with VMware Fusion,
+which is what I personally use.
+
+*Note:* Yes, we're all upset that VMware is now part of Broadcom, but
+let's just be happy that VMware Fusion (Pro) is now [[https://blogs.vmware.com/cloud-foundation/2024/11/11/vmware-fusion-and-workstation-are-now-free-for-all-users/][free for both
+personal and commercial use]].
+
+Download the appropriate NixOS ISO from the [[https://nixos.org/download/#nixos-iso][official NixOS download
+page]]. You can choose either =aarch64= (Apple silicon) or =x86_64=
+(Intel) depending on your hardware.
+
+Create a new VM in VMware Fusion with the following settings.
+
+- *OS:*
+  - Other Linux 6.x kernel 64-bit Arm
+- *Sharing:*
+  - Enable Shared Folders (optional)
+- *Processor & Memory:*
+  - 5 cores (or 50% of available cores)
+  - 16384MB (or 50% of available memory)
+- *Display:*
+  - Accelerate 3D graphics - ✓
+  - Shared graphics memory (100%)
+  - Use full resolution for Retina display - ✓
+- *Network:*
+  - Share with my Mac
+- *Hard Disk (NVMe):*
+  - 256.00GB (or any size you prefer)
+- *Keyboard & Mouse:*
+  - Key Mappings - ✗
+  - Mac Host Shortcuts - ✓
+  - Fusion Shortcuts - ✗
+
+*Note:* You should avoid bridged networking unless specifically
+required. This configuration disables the guest OS firewall, which
+creates a significant security risk for any system with internet
+access.
+
+Start the VM, boot into the installer, and change the default root
+password.
+
+#+begin_src shell
+  sudo passwd
+#+end_src
+
+Get the VMs IP address with ~ifconfig~ and initiate the installation
+from the host.
+
+#+begin_src shell
+  NIXADDR=<IP address> make vm/bootstrap
+#+end_src
+
+After the installation completes (~20 minutes) and the VM reboots,
+complete the installation.
+
+#+begin_src shell
+  NIXADDR=<IP address> make vm/init
+#+end_src
+
+Reboot the VM again, select your specialization in the boot menu, and
+sign in to your new development environment!
+
+* Remote access
+
+There should be a SSH server running on the guest OS that can be used
+to access the VM using its IP address. If you'd rather use a hostname
+instead you could add the following line to the host's =/etc/hosts=
+file.
+
+#+begin_src
+  <IP address> local.nixos
+#+end_src
+
+After flushing the DNS cache you can then access the VM using
+=local.nixos= instead of its IP address.
+
+#+begin_src shell
+  sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
+#+end_src
+
+** Proxying =localhost=
+
+When running applications inside the VM that interface with external
+services you can run into issues when using NAT networking. One I run
+into frequently is when a resource needs a callback URL. I could
+whitelist my VM's IP address, but this is an inflexible
+solution. Instead we can use a tool like ~socat~ to proxy a port on
+=localhost= to the VM.
+
+#+begin_src shell
+  socat TCP-LISTEN:8080,reuseaddr,fork TCP:<IP address>:8080
+#+end_src
+
+** Node.js debugging
+
+I do a lot of web development where I'd like to use Chrome DevTools
+debug Node.js services running inside the VM.
+
+To get this working the service must be listening on =0.0.0.0= instead
+of the default loopback address.
+
+#+begin_src shell
+  NODE_OPTIONS="--inspect=0.0.0.0:9229" <Cmd>
+#+end_src
+
+You must also open =chrome://inspect=, enable "Discover network
+targets" and add the following entries to the list:
+
+#+begin_src
+  <IP address>:9229
+  <IP address>:9230
+#+end_src
+
+If you've updated =/etc/hosts= you could replace the IP address with
+your chosen hostname instead.
