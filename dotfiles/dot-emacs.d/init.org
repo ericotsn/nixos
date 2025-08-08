@@ -237,7 +237,8 @@ with this edge case.
            ("C-x C-d" . duplicate-line)
            ("C-c z" . delete-trailing-whitespace))
     :config
-    (setq tab-width 4)
+    (setq-default tab-width 4)
+    (setq-default fill-column 80)
 
     ;; Highlight trailing whitespace for programming modes.
     (add-hook 'prog-mode-hook (lambda () (setq show-trailing-whitespace t)))
@@ -258,6 +259,9 @@ with this edge case.
 
     ;;; delsel.el
     (delete-selection-mode 1)
+
+    ;;; display-fill-column-indicator.el
+    (add-hook 'prog-mode-hook (lambda () (display-fill-column-indicator-mode 1)))
 
     ;;; files.el
     (setq backup-directory-alist
