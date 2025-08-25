@@ -21,6 +21,7 @@ on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
     alt-8 = 'workspace 8'
     alt-9 = 'workspace 9'
 
+    alt-ctrl-1 = 'move-node-to-workspace 1'
     alt-ctrl-2 = 'move-node-to-workspace 2'
     alt-ctrl-3 = 'move-node-to-workspace 3'
     alt-ctrl-4 = 'move-node-to-workspace 4'
