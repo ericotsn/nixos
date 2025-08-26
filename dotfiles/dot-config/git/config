@@ -5,9 +5,6 @@
 [github]
 	user = ericotsn
 
-[includeif "gitdir:~/work/"]
-	path = "~/work/.gitconfig"
-
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
