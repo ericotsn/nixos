@@ -14,7 +14,10 @@
 
   users.users.ericotsn = {
     isNormalUser = true;
-    extraGroups = [ "docker" "wheel" ];
+    extraGroups = [
+      "docker"
+      "wheel"
+    ];
     shell = pkgs.fish;
     hashedPassword = "$y$j9T$nsVaUSOUNIrbKtne7xTVQ/$EciO.2vyatQ7gAFv3NdCu5JazMgAzQ1rp4FMu/PhLpC";
   };
